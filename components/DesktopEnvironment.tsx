@@ -19,11 +19,11 @@ interface DesktopEnvironmentProps {
 
 // Icon paths
 const ICON = {
-  calendar: '/icons/calendar.jpg',
-  notes: '/icons/notes.jpg',
-  socmed: '/icons/socmed.jpg',
-  work: '/icons/work.jpg',
-  folders: '/icons/folders.jpg',
+  calendar: '/icons/calendar.png',
+  notes: '/icons/notes.png',
+  socmed: '/icons/socmed.png',
+  work: '/icons/work.png',
+  folders: '/icons/folders.png',
 };
 
 const DEFAULT_WINDOWS: Omit<WindowConfig, 'zIndex'>[] = [
