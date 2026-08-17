@@ -9,8 +9,7 @@ import CatatanSection from './sections/CatatanSection';
 import ContentCalendarSection from './sections/ContentCalendarSection';
 import ProyekSection from './sections/ProyekSection';
 import {
-  getJadwalKuliah, getJadwalTambahan, getTugas,
-  getCatatan, getKonten, getProyek,
+  getAllLocalData,
   fetchAllDataFromServer,
 } from '@/lib/storage';
 
@@ -105,28 +104,18 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
   }, []);
 
   // Data state
-  const [data, setData] = useState({
-    jadwalKuliah: getJadwalKuliah(),
-    jadwalTambahan: getJadwalTambahan(),
-    tugas: getTugas(),
-    catatan: getCatatan(),
-    konten: getKonten(),
-    proyek: getProyek(),
-  });
+  const [data, setData] = useState(getAllLocalData);
 
   const refresh = useCallback(() => {
-    setData({
-      jadwalKuliah: getJadwalKuliah(),
-      jadwalTambahan: getJadwalTambahan(),
-      tugas: getTugas(),
-      catatan: getCatatan(),
-      konten: getKonten(),
-      proyek: getProyek(),
-    });
+    setData(getAllLocalData());
   }, []);
 
-  // Initial fetch from PostgreSQL on mount
+  // Initial load from client localStorage and optional PostgreSQL fetch
   useEffect(() => {
+    // 1. Instantly load local data on client hydration
+    setData(getAllLocalData());
+
+    // 2. Fetch from server only if database is configured
     fetchAllDataFromServer().then(serverData => {
       if (serverData) {
         setData(serverData);

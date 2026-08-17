@@ -21,7 +21,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const sql = getDb();
-  if (!sql) return NextResponse.json({ success: false, error: 'Database belum terhubung.' }, { status: 400 });
+  if (!sql) return NextResponse.json({ success: false, mode: 'local', message: 'Database belum terhubung.' });
   await ensureTablesExist();
 
   try {
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   const sql = getDb();
-  if (!sql) return NextResponse.json({ success: false }, { status: 400 });
+  if (!sql) return NextResponse.json({ success: false, mode: 'local', message: 'Database belum terhubung.' });
   await ensureTablesExist();
 
   try {
@@ -60,7 +60,7 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   const sql = getDb();
-  if (!sql) return NextResponse.json({ success: false }, { status: 400 });
+  if (!sql) return NextResponse.json({ success: false, mode: 'local', message: 'Database belum terhubung.' });
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ success: false, error: 'ID tidak ditemukan' }, { status: 400 });

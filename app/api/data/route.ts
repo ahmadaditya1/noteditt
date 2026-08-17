@@ -6,12 +6,8 @@ export async function GET() {
   const sql = getDb();
   if (!sql) {
     return NextResponse.json({
-      jadwalKuliah: [],
-      jadwalTambahan: [],
-      tugas: [],
-      catatan: [],
-      konten: [],
-      proyek: [],
+      connected: false,
+      message: 'Database belum terhubung (menggunakan penyimpanan lokal browser).',
     });
   }
 
@@ -28,6 +24,7 @@ export async function GET() {
     ]);
 
     return NextResponse.json({
+      connected: true,
       jadwalKuliah: rawKuliah as JadwalKuliah[],
       jadwalTambahan: rawTambahan as JadwalTambahan[],
       tugas: rawTugas as Tugas[],
@@ -37,6 +34,6 @@ export async function GET() {
     });
   } catch (error) {
     console.error('Error fetching dashboard data:', error);
-    return NextResponse.json({ error: 'Gagal mengambil data' }, { status: 500 });
+    return NextResponse.json({ connected: false, error: 'Gagal mengambil data dari database.' }, { status: 500 });
   }
 }

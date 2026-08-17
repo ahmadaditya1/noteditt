@@ -41,6 +41,7 @@ function set<T>(key: string, value: T): void {
 
 // ─── Unified Data Sync with Server (PostgreSQL) ──────────────────────────────
 export interface AllDashboardData {
+  connected?: boolean;
   jadwalKuliah: JadwalKuliah[];
   jadwalTambahan: JadwalTambahan[];
   tugas: Tugas[];
@@ -49,23 +50,39 @@ export interface AllDashboardData {
   proyek: Proyek[];
 }
 
+export function getAllLocalData(): AllDashboardData {
+  return {
+    jadwalKuliah: getJadwalKuliah(),
+    jadwalTambahan: getJadwalTambahan(),
+    tugas: getTugas(),
+    catatan: getCatatan(),
+    konten: getKonten(),
+    proyek: getProyek(),
+  };
+}
+
 export async function fetchAllDataFromServer(): Promise<AllDashboardData | null> {
   try {
     const res = await fetch('/api/data');
     if (!res.ok) return null;
-    const data: AllDashboardData = await res.json();
+    const data = await res.json();
 
-    // Cache to localStorage
-    if (data.jadwalKuliah) set(KEYS.SCHEDULE_KULIAH, data.jadwalKuliah);
-    if (data.jadwalTambahan) set(KEYS.SCHEDULE_TAMBAHAN, data.jadwalTambahan);
-    if (data.tugas) set(KEYS.TASKS, data.tugas);
-    if (data.catatan) set(KEYS.NOTES, data.catatan);
-    if (data.konten) set(KEYS.CONTENT_CALENDAR, data.konten);
-    if (data.proyek) set(KEYS.PROJECTS, data.proyek);
+    // If server database is not configured or offline, never wipe out local storage
+    if (!data || data.connected === false) {
+      return null;
+    }
 
-    return data;
+    // Cache to localStorage only if connected database returned valid data
+    if (Array.isArray(data.jadwalKuliah)) set(KEYS.SCHEDULE_KULIAH, data.jadwalKuliah);
+    if (Array.isArray(data.jadwalTambahan)) set(KEYS.SCHEDULE_TAMBAHAN, data.jadwalTambahan);
+    if (Array.isArray(data.tugas)) set(KEYS.TASKS, data.tugas);
+    if (Array.isArray(data.catatan)) set(KEYS.NOTES, data.catatan);
+    if (Array.isArray(data.konten)) set(KEYS.CONTENT_CALENDAR, data.konten);
+    if (Array.isArray(data.proyek)) set(KEYS.PROJECTS, data.proyek);
+
+    return data as AllDashboardData;
   } catch (error) {
-    console.error('Failed to fetch data from server:', error);
+    console.warn('Database server not reachable, using localStorage data:', error);
     return null;
   }
 }
