@@ -1,22 +1,19 @@
 'use client';
 import React, { useState } from 'react';
-import { getAccessCode, setAccessCode } from '@/lib/storage';
 
 interface AuthGateProps {
   onAuth: () => void;
 }
 
 export default function AuthGate({ onAuth }: AuthGateProps) {
-  const hasCode = !!getAccessCode();
-  const [mode] = useState<'setup' | 'login'>(hasCode ? 'login' : 'setup');
   const [code, setCode] = useState('');
-  const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [shake, setShake] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [booting, setBooting] = useState(true);
 
   React.useEffect(() => {
-    const t = setTimeout(() => setBooting(false), 1800);
+    const t = setTimeout(() => setBooting(false), 1200);
     return () => clearTimeout(t);
   }, []);
 
@@ -26,18 +23,35 @@ export default function AuthGate({ onAuth }: AuthGateProps) {
     setTimeout(() => setShake(false), 450);
   };
 
-  const handleSetup = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (code.length < 4) { triggerShake('Kode minimal 4 karakter.'); return; }
-    if (code !== confirm) { triggerShake('Kode tidak cocok. Coba lagi.'); return; }
-    setAccessCode(code);
-    onAuth();
-  };
+    if (!code) {
+      triggerShake('Silakan masukkan kode akses.');
+      return;
+    }
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (code === getAccessCode()) { onAuth(); }
-    else { triggerShake('Kode akses salah.'); setCode(''); }
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        onAuth();
+      } else {
+        triggerShake(data.message || 'Kode akses salah.');
+        setCode('');
+      }
+    } catch {
+      triggerShake('Gagal terhubung ke server.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (booting) {
@@ -55,7 +69,7 @@ export default function AuthGate({ onAuth }: AuthGateProps) {
           <div style={{
             height: '100%',
             background: '#0066ff',
-            animation: 'boot-bar 1.5s ease forwards',
+            animation: 'boot-bar 1.0s ease forwards',
           }} />
           <style>{`
             @keyframes boot-bar {
@@ -73,36 +87,27 @@ export default function AuthGate({ onAuth }: AuthGateProps) {
       <div className={`boot-win ${shake ? 'shake' : ''}`} style={{ width: 340 }}>
         <div className="boot-win-title">
           <span className="boot-win-icon">🖥️</span>
-          {mode === 'setup' ? 'Setup Kode Akses' : 'Masuk — dashboard pribadi'}
+          Masuk — dashboard pribadi
         </div>
 
-        <form onSubmit={mode === 'setup' ? handleSetup : handleLogin}
+        <form onSubmit={handleLogin}
               style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ fontSize: 11, color: '#000', lineHeight: 1.5 }}>
-            {mode === 'setup'
-              ? 'Buat kode akses untuk melindungi dashboard Anda (min. 4 karakter).'
-              : 'Masukkan kode akses untuk membuka dashboard.'}
+            Masukkan kode akses untuk membuka dashboard pribadi Anda.
           </div>
 
           <div>
             <label className="win-label">Kode Akses:</label>
             <input className="win-input" type="password" value={code}
+              disabled={loading}
               onChange={e => setCode(e.target.value)} autoFocus placeholder="••••" />
           </div>
-
-          {mode === 'setup' && (
-            <div>
-              <label className="win-label">Konfirmasi Kode:</label>
-              <input className="win-input" type="password" value={confirm}
-                onChange={e => setConfirm(e.target.value)} placeholder="••••" />
-            </div>
-          )}
 
           {error && <div className="boot-error">⚠ {error}</div>}
 
           <div className="boot-buttons">
-            <button className="win-btn" type="submit">
-              {mode === 'setup' ? 'Buat Kode' : 'Masuk'}
+            <button className="win-btn" type="submit" disabled={loading}>
+              {loading ? 'Memverifikasi...' : 'Masuk'}
             </button>
           </div>
         </form>

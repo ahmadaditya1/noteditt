@@ -2,25 +2,38 @@
 import { useState, useEffect } from 'react';
 import AuthGate from '@/components/AuthGate';
 import DesktopEnvironment from '@/components/DesktopEnvironment';
-import { getAccessCode } from '@/lib/storage';
 
 export default function Home() {
   const [authed, setAuthed] = useState(false);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const sessionOk = sessionStorage.getItem('dashboard-session') === 'ok';
-    if (sessionOk && getAccessCode()) setAuthed(true);
-    setReady(true);
+    async function checkAuth() {
+      try {
+        const res = await fetch('/api/auth/check');
+        const data = await res.json();
+        if (data.authenticated) {
+          setAuthed(true);
+        }
+      } catch (err) {
+        console.error('Failed to verify session:', err);
+      } finally {
+        setReady(true);
+      }
+    }
+    checkAuth();
   }, []);
 
   const handleAuth = () => {
-    sessionStorage.setItem('dashboard-session', 'ok');
     setAuthed(true);
   };
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('dashboard-session');
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
     setAuthed(false);
   };
 
