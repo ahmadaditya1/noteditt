@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import DesktopIcon from './DesktopIcon';
 import WindowFrame, { WindowConfig } from './WindowFrame';
 import Taskbar from './Taskbar';
@@ -11,6 +11,7 @@ import ProyekSection from './sections/ProyekSection';
 import {
   getJadwalKuliah, getJadwalTambahan, getTugas,
   getCatatan, getKonten, getProyek,
+  fetchAllDataFromServer,
 } from '@/lib/storage';
 
 interface DesktopEnvironmentProps {
@@ -95,7 +96,7 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
   const [iconPositions, setIconPositions] = useState<Record<string, IconPosition>>({});
 
   // Generate random positions on client mount (each refresh / reopen)
-  React.useEffect(() => {
+  useEffect(() => {
     setIconPositions(getRandomPositions());
   }, []);
 
@@ -121,6 +122,15 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
       catatan: getCatatan(),
       konten: getKonten(),
       proyek: getProyek(),
+    });
+  }, []);
+
+  // Initial fetch from PostgreSQL on mount
+  useEffect(() => {
+    fetchAllDataFromServer().then(serverData => {
+      if (serverData) {
+        setData(serverData);
+      }
     });
   }, []);
 

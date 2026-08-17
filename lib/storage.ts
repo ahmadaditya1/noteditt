@@ -8,7 +8,6 @@ import {
 } from './types';
 
 const KEYS = {
-  ACCESS_CODE: 'access-code',
   SCHEDULE_KULIAH: 'schedule-kuliah',
   SCHEDULE_TAMBAHAN: 'schedule-tambahan',
   TASKS: 'tasks',
@@ -33,49 +32,100 @@ function get<T>(key: string, fallback: T): T {
 
 function set<T>(key: string, value: T): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(value));
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.error('LocalStorage error:', e);
+  }
 }
 
-// ─── Access Code ────────────────────────────────────────────────────────────
-export const getAccessCode = (): string | null =>
-  get<string | null>(KEYS.ACCESS_CODE, null);
+// ─── Unified Data Sync with Server (PostgreSQL) ──────────────────────────────
+export interface AllDashboardData {
+  jadwalKuliah: JadwalKuliah[];
+  jadwalTambahan: JadwalTambahan[];
+  tugas: Tugas[];
+  catatan: Catatan[];
+  konten: KontenCalendar[];
+  proyek: Proyek[];
+}
 
-export const setAccessCode = (code: string): void =>
-  set(KEYS.ACCESS_CODE, code);
+export async function fetchAllDataFromServer(): Promise<AllDashboardData | null> {
+  try {
+    const res = await fetch('/api/data');
+    if (!res.ok) return null;
+    const data: AllDashboardData = await res.json();
+
+    // Cache to localStorage
+    if (data.jadwalKuliah) set(KEYS.SCHEDULE_KULIAH, data.jadwalKuliah);
+    if (data.jadwalTambahan) set(KEYS.SCHEDULE_TAMBAHAN, data.jadwalTambahan);
+    if (data.tugas) set(KEYS.TASKS, data.tugas);
+    if (data.catatan) set(KEYS.NOTES, data.catatan);
+    if (data.konten) set(KEYS.CONTENT_CALENDAR, data.konten);
+    if (data.proyek) set(KEYS.PROJECTS, data.proyek);
+
+    return data;
+  } catch (error) {
+    console.error('Failed to fetch data from server:', error);
+    return null;
+  }
+}
 
 // ─── Jadwal Kuliah ──────────────────────────────────────────────────────────
 export const getJadwalKuliah = (): JadwalKuliah[] =>
   get<JadwalKuliah[]>(KEYS.SCHEDULE_KULIAH, []);
 
-export const saveJadwalKuliah = (list: JadwalKuliah[]): void =>
+export const saveJadwalKuliah = (list: JadwalKuliah[]): void => {
   set(KEYS.SCHEDULE_KULIAH, list);
+  fetch('/api/schedule-kuliah', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items: list }),
+  }).catch(err => console.error('API Error:', err));
+};
 
 export const addJadwalKuliah = (item: Omit<JadwalKuliah, 'id'>): void => {
   const list = getJadwalKuliah();
-  list.push({ ...item, id: genId() });
-  saveJadwalKuliah(list);
+  const newItem: JadwalKuliah = { ...item, id: genId() };
+  list.push(newItem);
+  set(KEYS.SCHEDULE_KULIAH, list);
+
+  fetch('/api/schedule-kuliah', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newItem),
+  }).catch(err => console.error('API Error:', err));
 };
 
 export const deleteJadwalKuliah = (id: string): void => {
-  saveJadwalKuliah(getJadwalKuliah().filter((x) => x.id !== id));
+  set(KEYS.SCHEDULE_KULIAH, getJadwalKuliah().filter((x) => x.id !== id));
+  fetch(`/api/schedule-kuliah?id=${id}`, { method: 'DELETE' }).catch(err => console.error('API Error:', err));
 };
 
 // ─── Jadwal Tambahan ─────────────────────────────────────────────────────────
 export const getJadwalTambahan = (): JadwalTambahan[] =>
   get<JadwalTambahan[]>(KEYS.SCHEDULE_TAMBAHAN, []);
 
-export const saveJadwalTambahan = (list: JadwalTambahan[]): void =>
+export const saveJadwalTambahan = (list: JadwalTambahan[]): void => {
   set(KEYS.SCHEDULE_TAMBAHAN, list);
+};
 
 export const addJadwalTambahan = (item: Omit<JadwalTambahan, 'id'>): void => {
   const list = getJadwalTambahan();
-  list.push({ ...item, id: genId() });
+  const newItem: JadwalTambahan = { ...item, id: genId() };
+  list.push(newItem);
   list.sort((a, b) => a.tanggal.localeCompare(b.tanggal));
-  saveJadwalTambahan(list);
+  set(KEYS.SCHEDULE_TAMBAHAN, list);
+
+  fetch('/api/schedule-tambahan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newItem),
+  }).catch(err => console.error('API Error:', err));
 };
 
 export const deleteJadwalTambahan = (id: string): void => {
-  saveJadwalTambahan(getJadwalTambahan().filter((x) => x.id !== id));
+  set(KEYS.SCHEDULE_TAMBAHAN, getJadwalTambahan().filter((x) => x.id !== id));
+  fetch(`/api/schedule-tambahan?id=${id}`, { method: 'DELETE' }).catch(err => console.error('API Error:', err));
 };
 
 // ─── Tugas ──────────────────────────────────────────────────────────────────
@@ -85,16 +135,38 @@ export const saveTugas = (list: Tugas[]): void => set(KEYS.TASKS, list);
 
 export const addTugas = (item: Omit<Tugas, 'id'>): void => {
   const list = getTugas();
-  list.push({ ...item, id: genId() });
-  saveTugas(list);
+  const newItem: Tugas = { ...item, id: genId() };
+  list.push(newItem);
+  set(KEYS.TASKS, list);
+
+  fetch('/api/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newItem),
+  }).catch(err => console.error('API Error:', err));
 };
 
 export const toggleTugas = (id: string): void => {
-  saveTugas(getTugas().map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+  let newDone = false;
+  const list = getTugas().map((t) => {
+    if (t.id === id) {
+      newDone = !t.done;
+      return { ...t, done: newDone };
+    }
+    return t;
+  });
+  set(KEYS.TASKS, list);
+
+  fetch('/api/tasks', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, done: newDone }),
+  }).catch(err => console.error('API Error:', err));
 };
 
 export const deleteTugas = (id: string): void => {
-  saveTugas(getTugas().filter((x) => x.id !== id));
+  set(KEYS.TASKS, getTugas().filter((x) => x.id !== id));
+  fetch(`/api/tasks?id=${id}`, { method: 'DELETE' }).catch(err => console.error('API Error:', err));
 };
 
 // ─── Catatan ─────────────────────────────────────────────────────────────────
@@ -112,12 +184,20 @@ export const addCatatan = (content: string): void => {
     hour: '2-digit',
     minute: '2-digit',
   });
-  list.unshift({ id: genId(), content, createdAt });
-  saveCatatan(list);
+  const newItem: Catatan = { id: genId(), content, createdAt };
+  list.unshift(newItem);
+  set(KEYS.NOTES, list);
+
+  fetch('/api/notes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newItem),
+  }).catch(err => console.error('API Error:', err));
 };
 
 export const deleteCatatan = (id: string): void => {
-  saveCatatan(getCatatan().filter((x) => x.id !== id));
+  set(KEYS.NOTES, getCatatan().filter((x) => x.id !== id));
+  fetch(`/api/notes?id=${id}`, { method: 'DELETE' }).catch(err => console.error('API Error:', err));
 };
 
 // ─── Content Calendar ────────────────────────────────────────────────────────
@@ -129,24 +209,39 @@ export const saveKonten = (list: KontenCalendar[]): void =>
 
 export const addKonten = (item: Omit<KontenCalendar, 'id'>): void => {
   const list = getKonten();
-  list.push({ ...item, id: genId() });
+  const newItem: KontenCalendar = { ...item, id: genId() };
+  list.push(newItem);
   list.sort((a, b) => a.tanggal.localeCompare(b.tanggal));
-  saveKonten(list);
+  set(KEYS.CONTENT_CALENDAR, list);
+
+  fetch('/api/content-calendar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newItem),
+  }).catch(err => console.error('API Error:', err));
 };
 
 export const cycleKontenStatus = (id: string): void => {
   const cycle = ['Draft', 'Review', 'Terjadwal', 'Publish'] as const;
-  saveKonten(
-    getKonten().map((k) => {
-      if (k.id !== id) return k;
-      const idx = cycle.indexOf(k.status);
-      return { ...k, status: cycle[(idx + 1) % cycle.length] };
-    })
-  );
+  let nextStatus: typeof cycle[number] = 'Draft';
+  const list = getKonten().map((k) => {
+    if (k.id !== id) return k;
+    const idx = cycle.indexOf(k.status);
+    nextStatus = cycle[(idx + 1) % cycle.length];
+    return { ...k, status: nextStatus };
+  });
+  set(KEYS.CONTENT_CALENDAR, list);
+
+  fetch('/api/content-calendar', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, status: nextStatus }),
+  }).catch(err => console.error('API Error:', err));
 };
 
 export const deleteKonten = (id: string): void => {
-  saveKonten(getKonten().filter((x) => x.id !== id));
+  set(KEYS.CONTENT_CALENDAR, getKonten().filter((x) => x.id !== id));
+  fetch(`/api/content-calendar?id=${id}`, { method: 'DELETE' }).catch(err => console.error('API Error:', err));
 };
 
 // ─── Proyek ──────────────────────────────────────────────────────────────────
@@ -156,21 +251,36 @@ export const saveProyek = (list: Proyek[]): void => set(KEYS.PROJECTS, list);
 
 export const addProyek = (item: Omit<Proyek, 'id'>): void => {
   const list = getProyek();
-  list.push({ ...item, id: genId() });
-  saveProyek(list);
+  const newItem: Proyek = { ...item, id: genId() };
+  list.push(newItem);
+  set(KEYS.PROJECTS, list);
+
+  fetch('/api/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newItem),
+  }).catch(err => console.error('API Error:', err));
 };
 
 export const cycleProyekStatus = (id: string): void => {
   const cycle = ['Rencana', 'Berjalan', 'Selesai'] as const;
-  saveProyek(
-    getProyek().map((p) => {
-      if (p.id !== id) return p;
-      const idx = cycle.indexOf(p.status);
-      return { ...p, status: cycle[(idx + 1) % cycle.length] };
-    })
-  );
+  let nextStatus: typeof cycle[number] = 'Rencana';
+  const list = getProyek().map((p) => {
+    if (p.id !== id) return p;
+    const idx = cycle.indexOf(p.status);
+    nextStatus = cycle[(idx + 1) % cycle.length];
+    return { ...p, status: nextStatus };
+  });
+  set(KEYS.PROJECTS, list);
+
+  fetch('/api/projects', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, status: nextStatus }),
+  }).catch(err => console.error('API Error:', err));
 };
 
 export const deleteProyek = (id: string): void => {
-  saveProyek(getProyek().filter((x) => x.id !== id));
+  set(KEYS.PROJECTS, getProyek().filter((x) => x.id !== id));
+  fetch(`/api/projects?id=${id}`, { method: 'DELETE' }).catch(err => console.error('API Error:', err));
 };
