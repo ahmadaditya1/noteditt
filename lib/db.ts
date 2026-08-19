@@ -1,30 +1,35 @@
 import postgres from 'postgres';
 
+// Di Vercel (serverless), setiap invocation bisa jadi instance baru.
+// Gunakan connection pooler Supabase (port 6543) agar tidak overload koneksi.
 let sql: postgres.Sql | null = null;
-let isInitialized = false;
 
 export function getDb(): postgres.Sql | null {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   if (!connectionString) {
     return null;
   }
+
   if (!sql) {
+    const isLocal = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
     sql = postgres(connectionString, {
-      ssl: connectionString.includes('localhost') ? false : 'require',
-      max: 10,
+      ssl: isLocal ? false : { rejectUnauthorized: false },
+      max: 1,           // serverless: 1 koneksi per invocation
+      idle_timeout: 20,
+      connect_timeout: 10,
     });
   }
+
   return sql;
 }
 
 export async function ensureTablesExist(): Promise<boolean> {
-  const sql = getDb();
-  if (!sql) return false;
-  if (isInitialized) return true;
+  const db = getDb();
+  if (!db) return false;
 
   try {
     // 1. Jadwal Kuliah
-    await sql`
+    await db`
       CREATE TABLE IF NOT EXISTS jadwal_kuliah (
         id VARCHAR(100) PRIMARY KEY,
         hari VARCHAR(20) NOT NULL,
@@ -35,13 +40,12 @@ export async function ensureTablesExist(): Promise<boolean> {
         kelas VARCHAR(100) DEFAULT ''
       );
     `;
-    // Tambah kolom kelas jika belum ada (migrasi tabel lama)
-    await sql`
+    await db`
       ALTER TABLE jadwal_kuliah ADD COLUMN IF NOT EXISTS kelas VARCHAR(100) DEFAULT '';
     `;
 
     // 2. Jadwal Tambahan
-    await sql`
+    await db`
       CREATE TABLE IF NOT EXISTS jadwal_tambahan (
         id VARCHAR(100) PRIMARY KEY,
         tanggal VARCHAR(30) NOT NULL,
@@ -52,7 +56,7 @@ export async function ensureTablesExist(): Promise<boolean> {
     `;
 
     // 3. Tugas (To-Do)
-    await sql`
+    await db`
       CREATE TABLE IF NOT EXISTS tugas (
         id VARCHAR(100) PRIMARY KEY,
         title VARCHAR(255) NOT NULL,
@@ -63,7 +67,7 @@ export async function ensureTablesExist(): Promise<boolean> {
     `;
 
     // 4. Catatan
-    await sql`
+    await db`
       CREATE TABLE IF NOT EXISTS catatan (
         id VARCHAR(100) PRIMARY KEY,
         content TEXT NOT NULL,
@@ -72,7 +76,7 @@ export async function ensureTablesExist(): Promise<boolean> {
     `;
 
     // 5. Konten Calendar
-    await sql`
+    await db`
       CREATE TABLE IF NOT EXISTS konten_calendar (
         id VARCHAR(100) PRIMARY KEY,
         tanggal VARCHAR(30) NOT NULL,
@@ -83,7 +87,7 @@ export async function ensureTablesExist(): Promise<boolean> {
     `;
 
     // 6. Proyek
-    await sql`
+    await db`
       CREATE TABLE IF NOT EXISTS proyek (
         id VARCHAR(100) PRIMARY KEY,
         nama VARCHAR(255) NOT NULL,
@@ -92,7 +96,6 @@ export async function ensureTablesExist(): Promise<boolean> {
       );
     `;
 
-    isInitialized = true;
     return true;
   } catch (error) {
     console.error('Error initializing database tables:', error);
