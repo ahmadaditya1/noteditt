@@ -92,9 +92,9 @@ export default function JadwalSection({ jadwalKuliah, jadwalTambahan, onChange }
 
         {showImport && (
           <div className="form-block" style={{ marginBottom: 6 }}>
-            <p className="form-hint">Paste dari Excel/Sheets: <b>Hari, Jam Mulai, Jam Selesai, Mata Kuliah, Ruang</b></p>
+            <p className="form-hint">Paste dari Excel/Sheets: <b>Hari, Jam Mulai, Jam Selesai, Mata Kuliah, Ruang, Kelas</b></p>
             <textarea className="win-textarea" rows={4}
-              placeholder={'Senin\t08.00\t09.40\tPemrograman Web\tR.201'}
+              placeholder={'Senin\t08.00\t09.40\tPemrograman Web\tR.201\tA'}
               value={importText} onChange={e => setImportText(e.target.value)} />
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <button className="win-btn" onClick={handleImport}>Import Data</button>
