@@ -25,12 +25,12 @@ export async function GET() {
 
     return NextResponse.json({
       connected: true,
-      jadwalKuliah: rawKuliah as JadwalKuliah[],
-      jadwalTambahan: rawTambahan as JadwalTambahan[],
-      tugas: rawTugas as Tugas[],
-      catatan: rawCatatan as Catatan[],
-      konten: rawKonten as KontenCalendar[],
-      proyek: rawProyek as Proyek[],
+      jadwalKuliah: rawKuliah as unknown as JadwalKuliah[],
+      jadwalTambahan: rawTambahan as unknown as JadwalTambahan[],
+      tugas: rawTugas as unknown as Tugas[],
+      catatan: rawCatatan as unknown as Catatan[],
+      konten: rawKonten as unknown as KontenCalendar[],
+      proyek: rawProyek as unknown as Proyek[],
     });
   } catch (error) {
     console.error('Error fetching dashboard data:', error);
