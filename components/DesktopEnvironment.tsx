@@ -106,22 +106,22 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
   // Data state
   const [data, setData] = useState(getAllLocalData);
 
-  const refresh = useCallback(() => {
-    setData(getAllLocalData());
+  const refresh = useCallback(async () => {
+    // Selalu ambil data terbaru dari server (Supabase) agar sinkron di semua device
+    const serverData = await fetchAllDataFromServer();
+    if (serverData) {
+      setData(serverData);
+    } else {
+      // Fallback ke localStorage jika server tidak tersedia
+      setData(getAllLocalData());
+    }
   }, []);
 
-  // Initial load from client localStorage and optional PostgreSQL fetch
+  // Initial load dari server saat pertama buka
   useEffect(() => {
-    // 1. Instantly load local data on client hydration
-    setData(getAllLocalData());
+    refresh();
+  }, [refresh]);
 
-    // 2. Fetch from server only if database is configured
-    fetchAllDataFromServer().then(serverData => {
-      if (serverData) {
-        setData(serverData);
-      }
-    });
-  }, []);
 
   const openWindow = useCallback((id: string) => {
     setWindows(prev => prev.map(w => {
