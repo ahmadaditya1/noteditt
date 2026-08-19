@@ -7,9 +7,10 @@ interface TaskbarProps {
   activeId: string | null;
   onWindowClick: (id: string) => void;
   onLogout: () => void;
+  onSync: () => void;
 }
 
-export default function Taskbar({ windows, activeId, onWindowClick, onLogout }: TaskbarProps) {
+export default function Taskbar({ windows, activeId, onWindowClick, onLogout, onSync }: TaskbarProps) {
   const [time, setTime] = useState('');
   const [showStart, setShowStart] = useState(false);
 
@@ -71,6 +72,8 @@ export default function Taskbar({ windows, activeId, onWindowClick, onLogout }: 
             {/* Menu items */}
             <div style={{ marginLeft: 22 }}>
               <StartMenuItem icon="🔒" label="Kunci / Keluar" onClick={() => { setShowStart(false); onLogout(); }} />
+              <div style={{ height: 1, background: 'var(--win-dark)', margin: '2px 0', boxShadow: '0 1px 0 var(--win-white)' }} />
+              <StartMenuItem icon="☁️" label="Sinkronisasi ke DB" onClick={() => { setShowStart(false); onSync(); }} />
               <div style={{ height: 1, background: 'var(--win-dark)', margin: '2px 0', boxShadow: '0 1px 0 var(--win-white)' }} />
               <StartMenuItem icon="🖥️" label="Dashboard" onClick={() => setShowStart(false)} />
             </div>

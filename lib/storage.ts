@@ -87,6 +87,92 @@ export async function fetchAllDataFromServer(): Promise<AllDashboardData | null>
   }
 }
 
+// ─── Migrasi localStorage → Supabase (sinkronisasi satu arah) ────────────────
+export async function pushAllLocalDataToServer(): Promise<{ success: boolean; message: string }> {
+  const local = getAllLocalData();
+  const results: string[] = [];
+  let hasError = false;
+
+  try {
+    // Jadwal Kuliah
+    if (local.jadwalKuliah.length > 0) {
+      const r = await fetch('/api/schedule-kuliah', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: local.jadwalKuliah }),
+      });
+      if (r.ok) results.push(`✅ ${local.jadwalKuliah.length} jadwal kuliah`);
+      else { results.push('❌ jadwal kuliah gagal'); hasError = true; }
+    }
+
+    // Jadwal Tambahan
+    for (const item of local.jadwalTambahan) {
+      await fetch('/api/schedule-tambahan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item),
+      });
+    }
+    if (local.jadwalTambahan.length > 0) results.push(`✅ ${local.jadwalTambahan.length} jadwal tambahan`);
+
+    // Tugas
+    for (const item of local.tugas) {
+      await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item),
+      });
+    }
+    if (local.tugas.length > 0) results.push(`✅ ${local.tugas.length} tugas`);
+
+    // Catatan
+    for (const item of local.catatan) {
+      await fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item),
+      });
+    }
+    if (local.catatan.length > 0) results.push(`✅ ${local.catatan.length} catatan`);
+
+    // Konten Calendar
+    for (const item of local.konten) {
+      await fetch('/api/content-calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item),
+      });
+    }
+    if (local.konten.length > 0) results.push(`✅ ${local.konten.length} konten`);
+
+    // Proyek
+    for (const item of local.proyek) {
+      await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item),
+      });
+    }
+    if (local.proyek.length > 0) results.push(`✅ ${local.proyek.length} proyek`);
+
+    const total = local.jadwalKuliah.length + local.jadwalTambahan.length +
+      local.tugas.length + local.catatan.length + local.konten.length + local.proyek.length;
+
+    if (total === 0) {
+      return { success: false, message: 'Tidak ada data lokal yang perlu disinkronisasi.' };
+    }
+
+    return {
+      success: !hasError,
+      message: results.join(', '),
+    };
+  } catch (err) {
+    console.error('Sync error:', err);
+    return { success: false, message: 'Gagal menghubungi server.' };
+  }
+}
+
+
 // ─── Jadwal Kuliah ──────────────────────────────────────────────────────────
 export const getJadwalKuliah = (): JadwalKuliah[] =>
   get<JadwalKuliah[]>(KEYS.SCHEDULE_KULIAH, []);

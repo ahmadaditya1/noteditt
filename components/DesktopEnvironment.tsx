@@ -11,6 +11,7 @@ import ProyekSection from './sections/ProyekSection';
 import {
   getAllLocalData,
   fetchAllDataFromServer,
+  pushAllLocalDataToServer,
 } from '@/lib/storage';
 
 interface DesktopEnvironmentProps {
@@ -122,6 +123,15 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
     refresh();
   }, [refresh]);
 
+  const handleSync = useCallback(async () => {
+    const result = await pushAllLocalDataToServer();
+    if (result.success) {
+      alert(`✅ Sinkronisasi berhasil!\n${result.message}`);
+      refresh();
+    } else {
+      alert(`⚠️ ${result.message}`);
+    }
+  }, [refresh]);
 
   const openWindow = useCallback((id: string) => {
     setWindows(prev => prev.map(w => {
@@ -217,6 +227,7 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
         activeId={activeId}
         onWindowClick={handleTaskbarClick}
         onLogout={onLogout}
+        onSync={handleSync}
       />
     </>
   );
