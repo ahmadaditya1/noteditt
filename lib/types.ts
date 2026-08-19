@@ -5,6 +5,7 @@ export interface JadwalKuliah {
   jamSelesai: string;
   mataKuliah: string;
   ruang: string;
+  kelas: string;
 }
 
 export interface JadwalTambahan {

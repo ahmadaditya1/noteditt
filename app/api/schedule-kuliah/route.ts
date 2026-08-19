@@ -9,7 +9,7 @@ export async function GET() {
 
   try {
     const list = await sql`
-      SELECT id, hari, jam_mulai as "jamMulai", jam_selesai as "jamSelesai", mata_kuliah as "mataKuliah", ruang
+      SELECT id, hari, jam_mulai as "jamMulai", jam_selesai as "jamSelesai", mata_kuliah as "mataKuliah", ruang, kelas
       FROM jadwal_kuliah;
     `;
     return NextResponse.json(list);
@@ -31,8 +31,8 @@ export async function POST(request: Request) {
     if (body.items && Array.isArray(body.items)) {
       for (const item of body.items as JadwalKuliah[]) {
         await sql`
-          INSERT INTO jadwal_kuliah (id, hari, jam_mulai, jam_selesai, mata_kuliah, ruang)
-          VALUES (${item.id}, ${item.hari}, ${item.jamMulai}, ${item.jamSelesai}, ${item.mataKuliah}, ${item.ruang || ''})
+          INSERT INTO jadwal_kuliah (id, hari, jam_mulai, jam_selesai, mata_kuliah, ruang, kelas)
+          VALUES (${item.id}, ${item.hari}, ${item.jamMulai}, ${item.jamSelesai}, ${item.mataKuliah}, ${item.ruang || ''}, ${item.kelas || ''})
           ON CONFLICT (id) DO NOTHING;
         `;
       }
@@ -40,16 +40,17 @@ export async function POST(request: Request) {
     }
 
     // Single item insert
-    const { id, hari, jamMulai, jamSelesai, mataKuliah, ruang = '' } = body;
+    const { id, hari, jamMulai, jamSelesai, mataKuliah, ruang = '', kelas = '' } = body;
     await sql`
-      INSERT INTO jadwal_kuliah (id, hari, jam_mulai, jam_selesai, mata_kuliah, ruang)
-      VALUES (${id}, ${hari}, ${jamMulai}, ${jamSelesai}, ${mataKuliah}, ${ruang})
+      INSERT INTO jadwal_kuliah (id, hari, jam_mulai, jam_selesai, mata_kuliah, ruang, kelas)
+      VALUES (${id}, ${hari}, ${jamMulai}, ${jamSelesai}, ${mataKuliah}, ${ruang}, ${kelas})
       ON CONFLICT (id) DO UPDATE SET
         hari = EXCLUDED.hari,
         jam_mulai = EXCLUDED.jam_mulai,
         jam_selesai = EXCLUDED.jam_selesai,
         mata_kuliah = EXCLUDED.mata_kuliah,
-        ruang = EXCLUDED.ruang;
+        ruang = EXCLUDED.ruang,
+        kelas = EXCLUDED.kelas;
     `;
 
     return NextResponse.json({ success: true });

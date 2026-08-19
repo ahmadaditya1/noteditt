@@ -17,7 +17,7 @@ interface Props {
   onChange: () => void;
 }
 
-const emptyKuliah = { hari: 'Senin' as JadwalKuliah['hari'], jamMulai: '', jamSelesai: '', mataKuliah: '', ruang: '' };
+const emptyKuliah = { hari: 'Senin' as JadwalKuliah['hari'], jamMulai: '', jamSelesai: '', mataKuliah: '', ruang: '', kelas: '' };
 const emptyTambahan = { tanggal: '', jam: '', judul: '', catatan: '' };
 
 export default function JadwalSection({ jadwalKuliah, jadwalTambahan, onChange }: Props) {
@@ -62,10 +62,10 @@ export default function JadwalSection({ jadwalKuliah, jadwalTambahan, onChange }
       const sep = line.includes('\t') ? '\t' : ',';
       const cols = line.split(sep).map(c => c.trim());
       if (cols.length < 4) return;
-      const [hari, jamMulai, jamSelesai, mataKuliah, ruang = ''] = cols;
+      const [hari, jamMulai, jamSelesai, mataKuliah, ruang = '', kelas = ''] = cols;
       const valid = HARI_ORDER.find(h => h.toLowerCase() === hari.toLowerCase());
       if (!valid) return;
-      toAdd.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}-${count}`, hari: valid, jamMulai, jamSelesai, mataKuliah, ruang });
+      toAdd.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}-${count}`, hari: valid, jamMulai, jamSelesai, mataKuliah, ruang, kelas });
       count++;
     });
     saveJadwalKuliah([...existing, ...toAdd]);
@@ -133,6 +133,12 @@ export default function JadwalSection({ jadwalKuliah, jadwalTambahan, onChange }
                     placeholder="Pemrograman Web" />
                 </div>
                 <div className="form-field">
+                  <label className="win-label">Kelas:</label>
+                  <input className="win-input" value={formK.kelas}
+                    onChange={e => setFormK({ ...formK, kelas: e.target.value })}
+                    placeholder="A (opsional)" />
+                </div>
+                <div className="form-field">
                   <label className="win-label">Ruang:</label>
                   <input className="win-input" value={formK.ruang}
                     onChange={e => setFormK({ ...formK, ruang: e.target.value })}
@@ -157,6 +163,7 @@ export default function JadwalSection({ jadwalKuliah, jadwalTambahan, onChange }
                     <div key={j.id} className="jadwal-item">
                       <span className="jadwal-time">{j.jamMulai} – {j.jamSelesai}</span>
                       <span className="jadwal-matkul" style={{ flex: 1 }}>{j.mataKuliah}</span>
+                      {j.kelas && <span className="jadwal-ruang">Kelas {j.kelas}</span>}
                       {j.ruang && <span className="jadwal-ruang">· {j.ruang}</span>}
                       <button className="btn-delete" onClick={() => { deleteJadwalKuliah(j.id); onChange(); }}>×</button>
                     </div>

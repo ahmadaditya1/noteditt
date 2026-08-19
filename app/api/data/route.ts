@@ -15,7 +15,7 @@ export async function GET() {
 
   try {
     const [rawKuliah, rawTambahan, rawTugas, rawCatatan, rawKonten, rawProyek] = await Promise.all([
-      sql`SELECT id, hari, jam_mulai as "jamMulai", jam_selesai as "jamSelesai", mata_kuliah as "mataKuliah", ruang FROM jadwal_kuliah;`,
+      sql`SELECT id, hari, jam_mulai as "jamMulai", jam_selesai as "jamSelesai", mata_kuliah as "mataKuliah", ruang, kelas FROM jadwal_kuliah;`,
       sql`SELECT id, tanggal, jam, judul, catatan FROM jadwal_tambahan ORDER BY tanggal ASC;`,
       sql`SELECT id, title, cat, deadline, done FROM tugas;`,
       sql`SELECT id, content, created_at as "createdAt" FROM catatan;`,

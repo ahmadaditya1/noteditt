@@ -31,8 +31,13 @@ export async function ensureTablesExist(): Promise<boolean> {
         jam_mulai VARCHAR(20) NOT NULL,
         jam_selesai VARCHAR(20) NOT NULL,
         mata_kuliah VARCHAR(255) NOT NULL,
-        ruang VARCHAR(100) DEFAULT ''
+        ruang VARCHAR(100) DEFAULT '',
+        kelas VARCHAR(100) DEFAULT ''
       );
+    `;
+    // Tambah kolom kelas jika belum ada (migrasi tabel lama)
+    await sql`
+      ALTER TABLE jadwal_kuliah ADD COLUMN IF NOT EXISTS kelas VARCHAR(100) DEFAULT '';
     `;
 
     // 2. Jadwal Tambahan
