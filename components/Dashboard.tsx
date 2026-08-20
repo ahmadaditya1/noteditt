@@ -14,6 +14,7 @@ import {
   getCatatan,
   getKonten,
   getProyek,
+  fetchAllDataFromServer,
 } from '@/lib/storage';
 
 const QUOTES = [
@@ -48,15 +49,44 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   });
   const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
 
-  const refresh = useCallback(() => {
-    setData({
-      jadwalKuliah: getJadwalKuliah(),
-      jadwalTambahan: getJadwalTambahan(),
-      tugas: getTugas(),
-      catatan: getCatatan(),
-      konten: getKonten(),
-      proyek: getProyek(),
+  // Fetch from server on mount so cross-device data is always up-to-date
+  useEffect(() => {
+    fetchAllDataFromServer().then((serverData) => {
+      if (serverData && serverData.connected !== false) {
+        setData({
+          jadwalKuliah: serverData.jadwalKuliah,
+          jadwalTambahan: serverData.jadwalTambahan,
+          tugas: serverData.tugas,
+          catatan: serverData.catatan,
+          konten: serverData.konten,
+          proyek: serverData.proyek,
+        });
+      }
     });
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const serverData = await fetchAllDataFromServer();
+    if (serverData && serverData.connected !== false) {
+      setData({
+        jadwalKuliah: serverData.jadwalKuliah,
+        jadwalTambahan: serverData.jadwalTambahan,
+        tugas: serverData.tugas,
+        catatan: serverData.catatan,
+        konten: serverData.konten,
+        proyek: serverData.proyek,
+      });
+    } else {
+      // Fallback ke localStorage jika server tidak bisa dihubungi
+      setData({
+        jadwalKuliah: getJadwalKuliah(),
+        jadwalTambahan: getJadwalTambahan(),
+        tugas: getTugas(),
+        catatan: getCatatan(),
+        konten: getKonten(),
+        proyek: getProyek(),
+      });
+    }
   }, []);
 
   // Stats for header bar
