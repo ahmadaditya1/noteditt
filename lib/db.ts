@@ -4,9 +4,25 @@ import postgres from 'postgres';
 // Gunakan connection pooler Supabase (port 6543) agar tidak overload koneksi.
 let sql: postgres.Sql | null = null;
 
+/**
+ * Helper untuk mengekstrak info error dari error object apapun.
+ * Berguna untuk logging di Vercel Function Logs.
+ */
+export function formatDbError(error: unknown): { message: string; code: string } {
+  if (error instanceof Error) {
+    const errWithCode = error as unknown as { code?: string };
+    return {
+      message: error.message,
+      code: errWithCode.code || 'UNKNOWN',
+    };
+  }
+  return { message: String(error), code: 'UNKNOWN' };
+}
+
 export function getDb(): postgres.Sql | null {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   if (!connectionString) {
+    console.warn('[db] No DATABASE_URL or POSTGRES_URL found in environment.');
     return null;
   }
 
@@ -16,8 +32,8 @@ export function getDb(): postgres.Sql | null {
       ssl: isLocal ? false : { rejectUnauthorized: false },
       max: 1,           // serverless: 1 koneksi per invocation
       idle_timeout: 20,
-      connect_timeout: 10,
-      prepare: false,   // Wajib untuk Supabase Connection Pooler / PgBouncer
+      connect_timeout: 5, // 5s, bukan 10s — sisakan waktu untuk Vercel mengembalikan response
+      prepare: false,     // Wajib untuk Supabase Connection Pooler / PgBouncer
     });
   }
 
@@ -99,7 +115,8 @@ export async function ensureTablesExist(): Promise<boolean> {
 
     return true;
   } catch (error) {
-    console.error('Error initializing database tables:', error);
+    const { message, code } = formatDbError(error);
+    console.error('[db] ensureTablesExist failed:', { message, code });
     return false;
   }
 }

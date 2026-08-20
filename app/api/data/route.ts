@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { ensureTablesExist, getDb } from '@/lib/db';
+import { ensureTablesExist, getDb, formatDbError } from '@/lib/db';
 import { JadwalKuliah, JadwalTambahan, Tugas, Catatan, KontenCalendar, Proyek } from '@/lib/types';
 
 export async function GET() {
@@ -11,9 +11,9 @@ export async function GET() {
     });
   }
 
-  await ensureTablesExist();
-
   try {
+    await ensureTablesExist();
+
     const [rawKuliah, rawTambahan, rawTugas, rawCatatan, rawKonten, rawProyek] = await Promise.all([
       sql`SELECT id, hari, jam_mulai as "jamMulai", jam_selesai as "jamSelesai", mata_kuliah as "mataKuliah", ruang, kelas FROM jadwal_kuliah;`,
       sql`SELECT id, tanggal, jam, judul, catatan FROM jadwal_tambahan ORDER BY tanggal ASC;`,
@@ -33,7 +33,8 @@ export async function GET() {
       proyek: rawProyek as unknown as Proyek[],
     });
   } catch (error) {
-    console.error('Error fetching dashboard data:', error);
-    return NextResponse.json({ connected: false, error: 'Gagal mengambil data dari database.' }, { status: 500 });
+    const { message, code } = formatDbError(error);
+    console.error('[api/data] GET failed:', { message, code });
+    return NextResponse.json({ connected: false, error: message, code }, { status: 500 });
   }
 }

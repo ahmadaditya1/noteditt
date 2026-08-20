@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { ensureTablesExist, getDb } from '@/lib/db';
+import { ensureTablesExist, getDb, formatDbError } from '@/lib/db';
 
 export async function GET() {
   const sql = getDb();
   if (!sql) return NextResponse.json([]);
-  await ensureTablesExist();
 
   try {
+    await ensureTablesExist();
     const list = await sql`
       SELECT id, tanggal, platform, status, caption
       FROM konten_calendar
@@ -14,7 +14,8 @@ export async function GET() {
     `;
     return NextResponse.json(list);
   } catch (error) {
-    console.error('Error fetching content calendar:', error);
+    const { message, code } = formatDbError(error);
+    console.error('[api/content-calendar] GET failed:', { message, code });
     return NextResponse.json([], { status: 500 });
   }
 }
@@ -22,9 +23,9 @@ export async function GET() {
 export async function POST(request: Request) {
   const sql = getDb();
   if (!sql) return NextResponse.json({ success: false, mode: 'local', message: 'Database belum terhubung.' });
-  await ensureTablesExist();
 
   try {
+    await ensureTablesExist();
     const { id, tanggal, platform, status, caption } = await request.json();
     await sql`
       INSERT INTO konten_calendar (id, tanggal, platform, status, caption)
@@ -38,23 +39,25 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error saving content calendar:', error);
-    return NextResponse.json({ success: false, error: 'Gagal menyimpan konten.' }, { status: 500 });
+    const { message, code } = formatDbError(error);
+    console.error('[api/content-calendar] POST failed:', { message, code });
+    return NextResponse.json({ success: false, error: message, code }, { status: 500 });
   }
 }
 
 export async function PATCH(request: Request) {
   const sql = getDb();
   if (!sql) return NextResponse.json({ success: false, mode: 'local', message: 'Database belum terhubung.' });
-  await ensureTablesExist();
 
   try {
+    await ensureTablesExist();
     const { id, status } = await request.json();
     await sql`UPDATE konten_calendar SET status = ${status} WHERE id = ${id};`;
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error updating content status:', error);
-    return NextResponse.json({ success: false }, { status: 500 });
+    const { message, code } = formatDbError(error);
+    console.error('[api/content-calendar] PATCH failed:', { message, code });
+    return NextResponse.json({ success: false, error: message, code }, { status: 500 });
   }
 }
 
@@ -66,10 +69,12 @@ export async function DELETE(request: Request) {
   if (!id) return NextResponse.json({ success: false, error: 'ID tidak ditemukan' }, { status: 400 });
 
   try {
+    await ensureTablesExist();
     await sql`DELETE FROM konten_calendar WHERE id = ${id};`;
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error deleting content:', error);
-    return NextResponse.json({ success: false }, { status: 500 });
+    const { message, code } = formatDbError(error);
+    console.error('[api/content-calendar] DELETE failed:', { message, code });
+    return NextResponse.json({ success: false, error: message, code }, { status: 500 });
   }
 }

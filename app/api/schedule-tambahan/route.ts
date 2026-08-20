@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { ensureTablesExist, getDb } from '@/lib/db';
+import { ensureTablesExist, getDb, formatDbError } from '@/lib/db';
 
 export async function GET() {
   const sql = getDb();
   if (!sql) return NextResponse.json([]);
-  await ensureTablesExist();
 
   try {
+    await ensureTablesExist();
     const list = await sql`
       SELECT id, tanggal, jam, judul, catatan
       FROM jadwal_tambahan
@@ -14,7 +14,8 @@ export async function GET() {
     `;
     return NextResponse.json(list);
   } catch (error) {
-    console.error('Error fetching jadwal tambahan:', error);
+    const { message, code } = formatDbError(error);
+    console.error('[api/schedule-tambahan] GET failed:', { message, code });
     return NextResponse.json([], { status: 500 });
   }
 }
@@ -22,9 +23,9 @@ export async function GET() {
 export async function POST(request: Request) {
   const sql = getDb();
   if (!sql) return NextResponse.json({ success: false, mode: 'local', message: 'Database belum terhubung.' });
-  await ensureTablesExist();
 
   try {
+    await ensureTablesExist();
     const { id, tanggal, jam = '', judul, catatan = '' } = await request.json();
     await sql`
       INSERT INTO jadwal_tambahan (id, tanggal, jam, judul, catatan)
@@ -38,8 +39,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error saving jadwal tambahan:', error);
-    return NextResponse.json({ success: false, error: 'Gagal menyimpan acara tambahan.' }, { status: 500 });
+    const { message, code } = formatDbError(error);
+    console.error('[api/schedule-tambahan] POST failed:', { message, code });
+    return NextResponse.json({ success: false, error: message, code }, { status: 500 });
   }
 }
 
@@ -51,10 +53,12 @@ export async function DELETE(request: Request) {
   if (!id) return NextResponse.json({ success: false, error: 'ID tidak ditemukan' }, { status: 400 });
 
   try {
+    await ensureTablesExist();
     await sql`DELETE FROM jadwal_tambahan WHERE id = ${id};`;
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error deleting jadwal tambahan:', error);
-    return NextResponse.json({ success: false }, { status: 500 });
+    const { message, code } = formatDbError(error);
+    console.error('[api/schedule-tambahan] DELETE failed:', { message, code });
+    return NextResponse.json({ success: false, error: message, code }, { status: 500 });
   }
 }

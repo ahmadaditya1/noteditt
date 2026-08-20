@@ -39,6 +39,72 @@ function set<T>(key: string, value: T): void {
   }
 }
 
+// ─── Toast Notification untuk Sync Errors ─────────────────────────────────────
+// Menampilkan pesan error kecil di pojok bawah kanan ketika data gagal disimpan
+// ke database. User perlu tahu bahwa data hanya tersimpan di browser.
+function showSyncWarning(message: string): void {
+  if (typeof window === 'undefined') return;
+  console.warn('[Sync]', message);
+
+  // Hindari spam toast — max 1 setiap 3 detik
+  const now = Date.now();
+  const lastShown = (window as unknown as Record<string, number>).__lastSyncToast || 0;
+  if (now - lastShown < 3000) return;
+  (window as unknown as Record<string, number>).__lastSyncToast = now;
+
+  const toast = document.createElement('div');
+  toast.textContent = `⚠️ ${message}`;
+  toast.style.cssText = [
+    'position:fixed', 'bottom:50px', 'right:12px', 'z-index:99999',
+    'background:#c00', 'color:#fff', 'padding:6px 14px',
+    'border:2px outset #e88', 'font-size:11px', 'font-family:Tahoma,sans-serif',
+    'box-shadow:2px 2px 0 rgba(0,0,0,0.4)', 'max-width:340px',
+    'opacity:0', 'transition:opacity 0.3s',
+  ].join(';');
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => { toast.style.opacity = '1'; });
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 300);
+  }, 5000);
+}
+
+/**
+ * Helper: kirim request ke API dan cek apakah berhasil.
+ * - Cek response.ok (HTTP status)
+ * - Cek body.success === false atau body.mode === 'local'
+ * - Tampilkan toast ke user jika gagal
+ * - Return true jika berhasil tersimpan ke database
+ */
+async function apiRequest(url: string, options: RequestInit): Promise<boolean> {
+  try {
+    const res = await fetch(url, options);
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const msg = body.error || body.message || `Server error (HTTP ${res.status})`;
+      console.error('[API]', msg, { url, status: res.status, body });
+      showSyncWarning(`Data gagal disimpan ke database: ${msg}`);
+      return false;
+    }
+
+    const body = await res.json().catch(() => ({}));
+
+    if (body.success === false || body.mode === 'local') {
+      const msg = body.message || 'Database tidak terhubung.';
+      console.warn('[API] Server responded with failure:', body);
+      showSyncWarning(msg);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[API] Network error:', err);
+    showSyncWarning('Gagal menghubungi server. Data hanya tersimpan di browser.');
+    return false;
+  }
+}
+
 // ─── Unified Data Sync with Server (PostgreSQL) ──────────────────────────────
 export interface AllDashboardData {
   connected?: boolean;
@@ -64,11 +130,17 @@ export function getAllLocalData(): AllDashboardData {
 export async function fetchAllDataFromServer(): Promise<AllDashboardData | null> {
   try {
     const res = await fetch('/api/data');
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn('[fetchAllData] Server returned', res.status);
+      return null;
+    }
     const data = await res.json();
 
     // If server database is not configured or offline, never wipe out local storage
     if (!data || data.connected === false) {
+      if (data?.error) {
+        console.warn('[fetchAllData] DB not connected:', data.error);
+      }
       return null;
     }
 
@@ -96,64 +168,73 @@ export async function pushAllLocalDataToServer(): Promise<{ success: boolean; me
   try {
     // Jadwal Kuliah
     if (local.jadwalKuliah.length > 0) {
-      const r = await fetch('/api/schedule-kuliah', {
+      const ok = await apiRequest('/api/schedule-kuliah', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: local.jadwalKuliah }),
       });
-      if (r.ok) results.push(`✅ ${local.jadwalKuliah.length} jadwal kuliah`);
+      if (ok) results.push(`✅ ${local.jadwalKuliah.length} jadwal kuliah`);
       else { results.push('❌ jadwal kuliah gagal'); hasError = true; }
     }
 
     // Jadwal Tambahan
     for (const item of local.jadwalTambahan) {
-      await fetch('/api/schedule-tambahan', {
+      const ok = await apiRequest('/api/schedule-tambahan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(item),
       });
+      if (!ok) hasError = true;
     }
-    if (local.jadwalTambahan.length > 0) results.push(`✅ ${local.jadwalTambahan.length} jadwal tambahan`);
+    if (local.jadwalTambahan.length > 0) results.push(hasError ? '❌ jadwal tambahan (sebagian gagal)' : `✅ ${local.jadwalTambahan.length} jadwal tambahan`);
 
     // Tugas
+    let tugasError = false;
     for (const item of local.tugas) {
-      await fetch('/api/tasks', {
+      const ok = await apiRequest('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(item),
       });
+      if (!ok) { tugasError = true; hasError = true; }
     }
-    if (local.tugas.length > 0) results.push(`✅ ${local.tugas.length} tugas`);
+    if (local.tugas.length > 0) results.push(tugasError ? '❌ tugas (sebagian gagal)' : `✅ ${local.tugas.length} tugas`);
 
     // Catatan
+    let catatanError = false;
     for (const item of local.catatan) {
-      await fetch('/api/notes', {
+      const ok = await apiRequest('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(item),
       });
+      if (!ok) { catatanError = true; hasError = true; }
     }
-    if (local.catatan.length > 0) results.push(`✅ ${local.catatan.length} catatan`);
+    if (local.catatan.length > 0) results.push(catatanError ? '❌ catatan (sebagian gagal)' : `✅ ${local.catatan.length} catatan`);
 
     // Konten Calendar
+    let kontenError = false;
     for (const item of local.konten) {
-      await fetch('/api/content-calendar', {
+      const ok = await apiRequest('/api/content-calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(item),
       });
+      if (!ok) { kontenError = true; hasError = true; }
     }
-    if (local.konten.length > 0) results.push(`✅ ${local.konten.length} konten`);
+    if (local.konten.length > 0) results.push(kontenError ? '❌ konten (sebagian gagal)' : `✅ ${local.konten.length} konten`);
 
     // Proyek
+    let proyekError = false;
     for (const item of local.proyek) {
-      await fetch('/api/projects', {
+      const ok = await apiRequest('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(item),
       });
+      if (!ok) { proyekError = true; hasError = true; }
     }
-    if (local.proyek.length > 0) results.push(`✅ ${local.proyek.length} proyek`);
+    if (local.proyek.length > 0) results.push(proyekError ? '❌ proyek (sebagian gagal)' : `✅ ${local.proyek.length} proyek`);
 
     const total = local.jadwalKuliah.length + local.jadwalTambahan.length +
       local.tugas.length + local.catatan.length + local.konten.length + local.proyek.length;
@@ -179,15 +260,11 @@ export const getJadwalKuliah = (): JadwalKuliah[] =>
 
 export const saveJadwalKuliah = async (list: JadwalKuliah[]): Promise<void> => {
   set(KEYS.SCHEDULE_KULIAH, list);
-  try {
-    await fetch('/api/schedule-kuliah', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: list }),
-    });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest('/api/schedule-kuliah', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items: list }),
+  });
 };
 
 export const addJadwalKuliah = async (item: Omit<JadwalKuliah, 'id'>): Promise<void> => {
@@ -196,24 +273,16 @@ export const addJadwalKuliah = async (item: Omit<JadwalKuliah, 'id'>): Promise<v
   list.push(newItem);
   set(KEYS.SCHEDULE_KULIAH, list);
 
-  try {
-    await fetch('/api/schedule-kuliah', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newItem),
-    });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest('/api/schedule-kuliah', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newItem),
+  });
 };
 
 export const deleteJadwalKuliah = async (id: string): Promise<void> => {
   set(KEYS.SCHEDULE_KULIAH, getJadwalKuliah().filter((x) => x.id !== id));
-  try {
-    await fetch(`/api/schedule-kuliah?id=${id}`, { method: 'DELETE' });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest(`/api/schedule-kuliah?id=${id}`, { method: 'DELETE' });
 };
 
 // ─── Jadwal Tambahan ─────────────────────────────────────────────────────────
@@ -231,24 +300,16 @@ export const addJadwalTambahan = async (item: Omit<JadwalTambahan, 'id'>): Promi
   list.sort((a, b) => a.tanggal.localeCompare(b.tanggal));
   set(KEYS.SCHEDULE_TAMBAHAN, list);
 
-  try {
-    await fetch('/api/schedule-tambahan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newItem),
-    });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest('/api/schedule-tambahan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newItem),
+  });
 };
 
 export const deleteJadwalTambahan = async (id: string): Promise<void> => {
   set(KEYS.SCHEDULE_TAMBAHAN, getJadwalTambahan().filter((x) => x.id !== id));
-  try {
-    await fetch(`/api/schedule-tambahan?id=${id}`, { method: 'DELETE' });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest(`/api/schedule-tambahan?id=${id}`, { method: 'DELETE' });
 };
 
 // ─── Tugas ──────────────────────────────────────────────────────────────────
@@ -264,15 +325,11 @@ export const addTugas = async (item: Omit<Tugas, 'id'>): Promise<void> => {
   list.push(newItem);
   set(KEYS.TASKS, list);
 
-  try {
-    await fetch('/api/tasks', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newItem),
-    });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest('/api/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newItem),
+  });
 };
 
 export const toggleTugas = async (id: string): Promise<void> => {
@@ -286,24 +343,16 @@ export const toggleTugas = async (id: string): Promise<void> => {
   });
   set(KEYS.TASKS, list);
 
-  try {
-    await fetch('/api/tasks', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, done: newDone }),
-    });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest('/api/tasks', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, done: newDone }),
+  });
 };
 
 export const deleteTugas = async (id: string): Promise<void> => {
   set(KEYS.TASKS, getTugas().filter((x) => x.id !== id));
-  try {
-    await fetch(`/api/tasks?id=${id}`, { method: 'DELETE' });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest(`/api/tasks?id=${id}`, { method: 'DELETE' });
 };
 
 // ─── Catatan ─────────────────────────────────────────────────────────────────
@@ -327,24 +376,16 @@ export const addCatatan = async (content: string): Promise<void> => {
   list.unshift(newItem);
   set(KEYS.NOTES, list);
 
-  try {
-    await fetch('/api/notes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newItem),
-    });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest('/api/notes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newItem),
+  });
 };
 
 export const deleteCatatan = async (id: string): Promise<void> => {
   set(KEYS.NOTES, getCatatan().filter((x) => x.id !== id));
-  try {
-    await fetch(`/api/notes?id=${id}`, { method: 'DELETE' });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest(`/api/notes?id=${id}`, { method: 'DELETE' });
 };
 
 // ─── Content Calendar ────────────────────────────────────────────────────────
@@ -362,15 +403,11 @@ export const addKonten = async (item: Omit<KontenCalendar, 'id'>): Promise<void>
   list.sort((a, b) => a.tanggal.localeCompare(b.tanggal));
   set(KEYS.CONTENT_CALENDAR, list);
 
-  try {
-    await fetch('/api/content-calendar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newItem),
-    });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest('/api/content-calendar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newItem),
+  });
 };
 
 export const cycleKontenStatus = async (id: string): Promise<void> => {
@@ -384,24 +421,16 @@ export const cycleKontenStatus = async (id: string): Promise<void> => {
   });
   set(KEYS.CONTENT_CALENDAR, list);
 
-  try {
-    await fetch('/api/content-calendar', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, status: nextStatus }),
-    });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest('/api/content-calendar', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, status: nextStatus }),
+  });
 };
 
 export const deleteKonten = async (id: string): Promise<void> => {
   set(KEYS.CONTENT_CALENDAR, getKonten().filter((x) => x.id !== id));
-  try {
-    await fetch(`/api/content-calendar?id=${id}`, { method: 'DELETE' });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest(`/api/content-calendar?id=${id}`, { method: 'DELETE' });
 };
 
 // ─── Proyek ──────────────────────────────────────────────────────────────────
@@ -417,15 +446,11 @@ export const addProyek = async (item: Omit<Proyek, 'id'>): Promise<void> => {
   list.push(newItem);
   set(KEYS.PROJECTS, list);
 
-  try {
-    await fetch('/api/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newItem),
-    });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest('/api/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newItem),
+  });
 };
 
 export const cycleProyekStatus = async (id: string): Promise<void> => {
@@ -439,22 +464,14 @@ export const cycleProyekStatus = async (id: string): Promise<void> => {
   });
   set(KEYS.PROJECTS, list);
 
-  try {
-    await fetch('/api/projects', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, status: nextStatus }),
-    });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest('/api/projects', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, status: nextStatus }),
+  });
 };
 
 export const deleteProyek = async (id: string): Promise<void> => {
   set(KEYS.PROJECTS, getProyek().filter((x) => x.id !== id));
-  try {
-    await fetch(`/api/projects?id=${id}`, { method: 'DELETE' });
-  } catch (err) {
-    console.error('API Error:', err);
-  }
+  await apiRequest(`/api/projects?id=${id}`, { method: 'DELETE' });
 };
