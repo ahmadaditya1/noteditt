@@ -35,32 +35,40 @@ export default function JadwalSection({ jadwalKuliah, jadwalTambahan, onChange }
     return acc;
   }, {} as Record<string, JadwalKuliah[]>);
 
-  const handleAddKuliah = (e: React.FormEvent) => {
+  const handleAddKuliah = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formK.mataKuliah || !formK.jamMulai || !formK.jamSelesai) return;
-    addJadwalKuliah(formK);
+    await addJadwalKuliah(formK);
     setFormK(emptyKuliah);
     setShowFormK(false);
     onChange();
   };
 
-  const handleAddTambahan = (e: React.FormEvent) => {
+  const handleAddTambahan = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formT.judul || !formT.tanggal) return;
-    addJadwalTambahan(formT);
+    await addJadwalTambahan(formT);
     setFormT(emptyTambahan);
     setShowFormT(false);
     onChange();
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     const lines = importText.trim().split('\n').filter(Boolean);
     let count = 0;
     const existing = getJadwalKuliah();
     const toAdd: JadwalKuliah[] = [];
     lines.forEach(line => {
-      const sep = line.includes('\t') ? '\t' : ',';
-      const cols = line.split(sep).map(c => c.trim());
+      let cols: string[] = [];
+      if (line.includes('\t')) {
+        cols = line.split('\t').map(c => c.trim());
+      } else if (line.includes(',')) {
+        cols = line.split(',').map(c => c.trim());
+      } else if (line.includes(';')) {
+        cols = line.split(';').map(c => c.trim());
+      } else {
+        cols = line.split(/\s{2,}/).map(c => c.trim());
+      }
       if (cols.length < 4) return;
       const [hari, jamMulai, jamSelesai, mataKuliah, ruang = '', kelas = ''] = cols;
       const valid = HARI_ORDER.find(h => h.toLowerCase() === hari.toLowerCase());
@@ -68,7 +76,13 @@ export default function JadwalSection({ jadwalKuliah, jadwalTambahan, onChange }
       toAdd.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}-${count}`, hari: valid, jamMulai, jamSelesai, mataKuliah, ruang, kelas });
       count++;
     });
-    saveJadwalKuliah([...existing, ...toAdd]);
+
+    if (toAdd.length === 0) {
+      setImportResult('⚠️ Format tidak cocok. Pastikan format: Hari, Jam Mulai, Jam Selesai, Mata Kuliah, Ruang, Kelas');
+      return;
+    }
+
+    await saveJadwalKuliah([...existing, ...toAdd]);
     setImportResult(`✅ ${count} jadwal berhasil diimpor.`);
     setImportText('');
     onChange();

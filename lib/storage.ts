@@ -177,79 +177,105 @@ export async function pushAllLocalDataToServer(): Promise<{ success: boolean; me
 export const getJadwalKuliah = (): JadwalKuliah[] =>
   get<JadwalKuliah[]>(KEYS.SCHEDULE_KULIAH, []);
 
-export const saveJadwalKuliah = (list: JadwalKuliah[]): void => {
+export const saveJadwalKuliah = async (list: JadwalKuliah[]): Promise<void> => {
   set(KEYS.SCHEDULE_KULIAH, list);
-  fetch('/api/schedule-kuliah', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items: list }),
-  }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch('/api/schedule-kuliah', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: list }),
+    });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };
 
-export const addJadwalKuliah = (item: Omit<JadwalKuliah, 'id'>): void => {
+export const addJadwalKuliah = async (item: Omit<JadwalKuliah, 'id'>): Promise<void> => {
   const list = getJadwalKuliah();
   const newItem: JadwalKuliah = { ...item, id: genId() };
   list.push(newItem);
   set(KEYS.SCHEDULE_KULIAH, list);
 
-  fetch('/api/schedule-kuliah', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(newItem),
-  }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch('/api/schedule-kuliah', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newItem),
+    });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };
 
-export const deleteJadwalKuliah = (id: string): void => {
+export const deleteJadwalKuliah = async (id: string): Promise<void> => {
   set(KEYS.SCHEDULE_KULIAH, getJadwalKuliah().filter((x) => x.id !== id));
-  fetch(`/api/schedule-kuliah?id=${id}`, { method: 'DELETE' }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch(`/api/schedule-kuliah?id=${id}`, { method: 'DELETE' });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };
 
 // ─── Jadwal Tambahan ─────────────────────────────────────────────────────────
 export const getJadwalTambahan = (): JadwalTambahan[] =>
   get<JadwalTambahan[]>(KEYS.SCHEDULE_TAMBAHAN, []);
 
-export const saveJadwalTambahan = (list: JadwalTambahan[]): void => {
+export const saveJadwalTambahan = async (list: JadwalTambahan[]): Promise<void> => {
   set(KEYS.SCHEDULE_TAMBAHAN, list);
 };
 
-export const addJadwalTambahan = (item: Omit<JadwalTambahan, 'id'>): void => {
+export const addJadwalTambahan = async (item: Omit<JadwalTambahan, 'id'>): Promise<void> => {
   const list = getJadwalTambahan();
   const newItem: JadwalTambahan = { ...item, id: genId() };
   list.push(newItem);
   list.sort((a, b) => a.tanggal.localeCompare(b.tanggal));
   set(KEYS.SCHEDULE_TAMBAHAN, list);
 
-  fetch('/api/schedule-tambahan', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(newItem),
-  }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch('/api/schedule-tambahan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newItem),
+    });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };
 
-export const deleteJadwalTambahan = (id: string): void => {
+export const deleteJadwalTambahan = async (id: string): Promise<void> => {
   set(KEYS.SCHEDULE_TAMBAHAN, getJadwalTambahan().filter((x) => x.id !== id));
-  fetch(`/api/schedule-tambahan?id=${id}`, { method: 'DELETE' }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch(`/api/schedule-tambahan?id=${id}`, { method: 'DELETE' });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };
 
 // ─── Tugas ──────────────────────────────────────────────────────────────────
 export const getTugas = (): Tugas[] => get<Tugas[]>(KEYS.TASKS, []);
 
-export const saveTugas = (list: Tugas[]): void => set(KEYS.TASKS, list);
+export const saveTugas = async (list: Tugas[]): Promise<void> => {
+  set(KEYS.TASKS, list);
+};
 
-export const addTugas = (item: Omit<Tugas, 'id'>): void => {
+export const addTugas = async (item: Omit<Tugas, 'id'>): Promise<void> => {
   const list = getTugas();
   const newItem: Tugas = { ...item, id: genId() };
   list.push(newItem);
   set(KEYS.TASKS, list);
 
-  fetch('/api/tasks', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(newItem),
-  }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newItem),
+    });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };
 
-export const toggleTugas = (id: string): void => {
+export const toggleTugas = async (id: string): Promise<void> => {
   let newDone = false;
   const list = getTugas().map((t) => {
     if (t.id === id) {
@@ -260,24 +286,34 @@ export const toggleTugas = (id: string): void => {
   });
   set(KEYS.TASKS, list);
 
-  fetch('/api/tasks', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, done: newDone }),
-  }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch('/api/tasks', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, done: newDone }),
+    });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };
 
-export const deleteTugas = (id: string): void => {
+export const deleteTugas = async (id: string): Promise<void> => {
   set(KEYS.TASKS, getTugas().filter((x) => x.id !== id));
-  fetch(`/api/tasks?id=${id}`, { method: 'DELETE' }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch(`/api/tasks?id=${id}`, { method: 'DELETE' });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };
 
 // ─── Catatan ─────────────────────────────────────────────────────────────────
 export const getCatatan = (): Catatan[] => get<Catatan[]>(KEYS.NOTES, []);
 
-export const saveCatatan = (list: Catatan[]): void => set(KEYS.NOTES, list);
+export const saveCatatan = async (list: Catatan[]): Promise<void> => {
+  set(KEYS.NOTES, list);
+};
 
-export const addCatatan = (content: string): void => {
+export const addCatatan = async (content: string): Promise<void> => {
   const list = getCatatan();
   const now = new Date();
   const createdAt = now.toLocaleDateString('id-ID', {
@@ -291,40 +327,53 @@ export const addCatatan = (content: string): void => {
   list.unshift(newItem);
   set(KEYS.NOTES, list);
 
-  fetch('/api/notes', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(newItem),
-  }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch('/api/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newItem),
+    });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };
 
-export const deleteCatatan = (id: string): void => {
+export const deleteCatatan = async (id: string): Promise<void> => {
   set(KEYS.NOTES, getCatatan().filter((x) => x.id !== id));
-  fetch(`/api/notes?id=${id}`, { method: 'DELETE' }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch(`/api/notes?id=${id}`, { method: 'DELETE' });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };
 
 // ─── Content Calendar ────────────────────────────────────────────────────────
 export const getKonten = (): KontenCalendar[] =>
   get<KontenCalendar[]>(KEYS.CONTENT_CALENDAR, []);
 
-export const saveKonten = (list: KontenCalendar[]): void =>
+export const saveKonten = async (list: KontenCalendar[]): Promise<void> => {
   set(KEYS.CONTENT_CALENDAR, list);
+};
 
-export const addKonten = (item: Omit<KontenCalendar, 'id'>): void => {
+export const addKonten = async (item: Omit<KontenCalendar, 'id'>): Promise<void> => {
   const list = getKonten();
   const newItem: KontenCalendar = { ...item, id: genId() };
   list.push(newItem);
   list.sort((a, b) => a.tanggal.localeCompare(b.tanggal));
   set(KEYS.CONTENT_CALENDAR, list);
 
-  fetch('/api/content-calendar', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(newItem),
-  }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch('/api/content-calendar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newItem),
+    });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };
 
-export const cycleKontenStatus = (id: string): void => {
+export const cycleKontenStatus = async (id: string): Promise<void> => {
   const cycle = ['Draft', 'Review', 'Terjadwal', 'Publish'] as const;
   let nextStatus: typeof cycle[number] = 'Draft';
   const list = getKonten().map((k) => {
@@ -335,37 +384,51 @@ export const cycleKontenStatus = (id: string): void => {
   });
   set(KEYS.CONTENT_CALENDAR, list);
 
-  fetch('/api/content-calendar', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, status: nextStatus }),
-  }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch('/api/content-calendar', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status: nextStatus }),
+    });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };
 
-export const deleteKonten = (id: string): void => {
+export const deleteKonten = async (id: string): Promise<void> => {
   set(KEYS.CONTENT_CALENDAR, getKonten().filter((x) => x.id !== id));
-  fetch(`/api/content-calendar?id=${id}`, { method: 'DELETE' }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch(`/api/content-calendar?id=${id}`, { method: 'DELETE' });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };
 
 // ─── Proyek ──────────────────────────────────────────────────────────────────
 export const getProyek = (): Proyek[] => get<Proyek[]>(KEYS.PROJECTS, []);
 
-export const saveProyek = (list: Proyek[]): void => set(KEYS.PROJECTS, list);
+export const saveProyek = async (list: Proyek[]): Promise<void> => {
+  set(KEYS.PROJECTS, list);
+};
 
-export const addProyek = (item: Omit<Proyek, 'id'>): void => {
+export const addProyek = async (item: Omit<Proyek, 'id'>): Promise<void> => {
   const list = getProyek();
   const newItem: Proyek = { ...item, id: genId() };
   list.push(newItem);
   set(KEYS.PROJECTS, list);
 
-  fetch('/api/projects', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(newItem),
-  }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newItem),
+    });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };
 
-export const cycleProyekStatus = (id: string): void => {
+export const cycleProyekStatus = async (id: string): Promise<void> => {
   const cycle = ['Rencana', 'Berjalan', 'Selesai'] as const;
   let nextStatus: typeof cycle[number] = 'Rencana';
   const list = getProyek().map((p) => {
@@ -376,14 +439,22 @@ export const cycleProyekStatus = (id: string): void => {
   });
   set(KEYS.PROJECTS, list);
 
-  fetch('/api/projects', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, status: nextStatus }),
-  }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch('/api/projects', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status: nextStatus }),
+    });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };
 
-export const deleteProyek = (id: string): void => {
+export const deleteProyek = async (id: string): Promise<void> => {
   set(KEYS.PROJECTS, getProyek().filter((x) => x.id !== id));
-  fetch(`/api/projects?id=${id}`, { method: 'DELETE' }).catch(err => console.error('API Error:', err));
+  try {
+    await fetch(`/api/projects?id=${id}`, { method: 'DELETE' });
+  } catch (err) {
+    console.error('API Error:', err);
+  }
 };

@@ -108,13 +108,13 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
   const [data, setData] = useState(getAllLocalData);
 
   const refresh = useCallback(async () => {
-    // Selalu ambil data terbaru dari server (Supabase) agar sinkron di semua device
+    // 1. Segera update dari localStorage agar UI responsif seketika (0ms)
+    setData(getAllLocalData());
+
+    // 2. Kemudian sync dengan server di background
     const serverData = await fetchAllDataFromServer();
-    if (serverData) {
+    if (serverData && serverData.connected !== false) {
       setData(serverData);
-    } else {
-      // Fallback ke localStorage jika server tidak tersedia
-      setData(getAllLocalData());
     }
   }, []);
 

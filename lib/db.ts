@@ -17,6 +17,7 @@ export function getDb(): postgres.Sql | null {
       max: 1,           // serverless: 1 koneksi per invocation
       idle_timeout: 20,
       connect_timeout: 10,
+      prepare: false,   // Wajib untuk Supabase Connection Pooler / PgBouncer
     });
   }
 

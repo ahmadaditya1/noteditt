@@ -66,6 +66,17 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   }, []);
 
   const refresh = useCallback(async () => {
+    // 1. Segera update dari localStorage (0ms)
+    setData({
+      jadwalKuliah: getJadwalKuliah(),
+      jadwalTambahan: getJadwalTambahan(),
+      tugas: getTugas(),
+      catatan: getCatatan(),
+      konten: getKonten(),
+      proyek: getProyek(),
+    });
+
+    // 2. Kemudian sync dengan server
     const serverData = await fetchAllDataFromServer();
     if (serverData && serverData.connected !== false) {
       setData({
@@ -75,16 +86,6 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         catatan: serverData.catatan,
         konten: serverData.konten,
         proyek: serverData.proyek,
-      });
-    } else {
-      // Fallback ke localStorage jika server tidak bisa dihubungi
-      setData({
-        jadwalKuliah: getJadwalKuliah(),
-        jadwalTambahan: getJadwalTambahan(),
-        tugas: getTugas(),
-        catatan: getCatatan(),
-        konten: getKonten(),
-        proyek: getProyek(),
       });
     }
   }, []);
