@@ -1,8 +1,6 @@
-import { NextResponse } from 'next/server';
 import {
   dbQueryFailedResponse,
   dbSuccessResponse,
-  ensureDbReady,
   requireDb,
 } from '@/lib/api-db';
 import { JadwalKuliah, JadwalTambahan, Tugas, Catatan, KontenCalendar, Proyek } from '@/lib/types';
@@ -12,9 +10,6 @@ const ROUTE = 'api/data';
 export async function GET() {
   const dbCtx = requireDb(ROUTE);
   if (!dbCtx.ok) return dbCtx.response;
-
-  const readyErr = await ensureDbReady(ROUTE, dbCtx.sql);
-  if (readyErr) return readyErr;
 
   try {
     const [rawKuliah, rawTambahan, rawTugas, rawCatatan, rawKonten, rawProyek] = await Promise.all([

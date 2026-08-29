@@ -98,7 +98,10 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('loading');
 
   useEffect(() => {
-    setIconPositions(getRandomPositions());
+    const setInitialPositions = window.setTimeout(() => {
+      setIconPositions(getRandomPositions());
+    }, 0);
+    return () => window.clearTimeout(setInitialPositions);
   }, []);
 
   useEffect(() => subscribeSyncStatus(setSyncStatus), []);
@@ -114,7 +117,8 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
 
   // Initial load: server first
   useEffect(() => {
-    refresh();
+    const initialFetch = window.setTimeout(() => void refresh(), 0);
+    return () => window.clearTimeout(initialFetch);
   }, [refresh]);
 
   // Refetch saat tab kembali fokus
@@ -130,7 +134,9 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
 
   // Polling ringan setiap 45 detik
   useEffect(() => {
-    const interval = setInterval(refresh, POLL_INTERVAL_MS);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh();
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [refresh]);
 

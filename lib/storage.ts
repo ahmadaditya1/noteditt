@@ -47,6 +47,9 @@ const EMPTY_DATA: AllDashboardData = {
   proyek: [],
 };
 
+const DATA_FETCH_TIMEOUT_MS = 12_000;
+let inFlightDataFetch: Promise<FetchResult> | null = null;
+
 // ─── Sync status (global, client-only) ───────────────────────────────────────
 let syncStatus: SyncStatus = 'loading';
 const syncListeners = new Set<(s: SyncStatus) => void>();
@@ -184,10 +187,28 @@ export function getAllLocalData(): AllDashboardData {
  * Fallback ke localStorage HANYA jika fetch gagal total.
  */
 export async function fetchAllDataFromServer(): Promise<FetchResult> {
+  // Mount, focus, polling, dan refresh manual dapat terjadi berdekatan. Semua
+  // pemanggil berbagi satu request agar koneksi pooler tidak dibanjiri.
+  if (inFlightDataFetch) return inFlightDataFetch;
+
+  inFlightDataFetch = fetchDataSnapshot();
+  try {
+    return await inFlightDataFetch;
+  } finally {
+    inFlightDataFetch = null;
+  }
+}
+
+async function fetchDataSnapshot(): Promise<FetchResult> {
   setSyncStatus('loading');
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), DATA_FETCH_TIMEOUT_MS);
 
   try {
-    const res = await fetch('/api/data');
+    const res = await fetch('/api/data', {
+      cache: 'no-store',
+      signal: controller.signal,
+    });
     const data = await res.json();
 
     if (res.ok && data.connected === true && data.dbStatus === 'connected') {
@@ -216,9 +237,15 @@ export async function fetchAllDataFromServer(): Promise<FetchResult> {
     setSyncStatus('local_only');
     return { data: EMPTY_DATA, source: 'server', connected: false };
   } catch (error) {
-    console.warn('[fetchAllData] Network error, using localStorage fallback:', error);
+    const reason = error instanceof DOMException && error.name === 'AbortError'
+      ? `Server tidak merespons dalam ${DATA_FETCH_TIMEOUT_MS / 1000} detik`
+      : 'Network error';
+    console.warn(`[fetchAllData] ${reason}, using localStorage fallback:`, error);
+    showSyncWarning(`${reason}. Menampilkan data lokal.`);
     setSyncStatus('local_only');
     return { data: getAllLocalData(), source: 'local', connected: false };
+  } finally {
+    window.clearTimeout(timeout);
   }
 }
 

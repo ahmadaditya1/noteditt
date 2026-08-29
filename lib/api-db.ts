@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { ensureTablesExist, formatDbError, getDb } from '@/lib/db';
+import { formatDbError, getDb } from '@/lib/db';
 import type postgres from 'postgres';
 
 /** Tiga kondisi koneksi DB yang distandarkan di semua endpoint. */
@@ -68,21 +68,4 @@ export function requireDb(route: string): DbContext {
     return { ok: false, response: dbNotConnectedResponse(route) };
   }
   return { ok: true, sql };
-}
-
-/** Pastikan tabel ada; kembalikan respons query_failed jika gagal. */
-export async function ensureDbReady(route: string, sql: postgres.Sql): Promise<NextResponse | null> {
-  const ready = await ensureTablesExist();
-  if (!ready) {
-    const body: DbApiBody = {
-      success: false,
-      dbStatus: 'query_failed',
-      error: 'Gagal membuat atau memverifikasi tabel database.',
-      message: 'Gagal membuat atau memverifikasi tabel database.',
-      hint: INIT_DB_HINT,
-    };
-    console.error(`[${route}] ensureTablesExist failed`);
-    return NextResponse.json(body, { status: 500 });
-  }
-  return null;
 }

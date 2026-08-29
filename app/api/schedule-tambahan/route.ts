@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import {
   dbQueryFailedResponse,
   dbSuccessResponse,
-  ensureDbReady,
   requireDb,
 } from '@/lib/api-db';
 
@@ -11,9 +10,6 @@ const ROUTE = 'api/schedule-tambahan';
 export async function GET() {
   const dbCtx = requireDb(ROUTE);
   if (!dbCtx.ok) return dbCtx.response;
-
-  const readyErr = await ensureDbReady(ROUTE, dbCtx.sql);
-  if (readyErr) return readyErr;
 
   try {
     const list = await dbCtx.sql`
@@ -31,9 +27,6 @@ export async function GET() {
 export async function POST(request: Request) {
   const dbCtx = requireDb(ROUTE);
   if (!dbCtx.ok) return dbCtx.response;
-
-  const readyErr = await ensureDbReady(ROUTE, dbCtx.sql);
-  if (readyErr) return readyErr;
 
   try {
     const { id, tanggal, jam = '', judul, catatan = '' } = await request.json();
@@ -63,9 +56,6 @@ export async function DELETE(request: Request) {
   if (!id) {
     return NextResponse.json({ success: false, dbStatus: 'connected', error: 'ID tidak ditemukan' }, { status: 400 });
   }
-
-  const readyErr = await ensureDbReady(ROUTE, dbCtx.sql);
-  if (readyErr) return readyErr;
 
   try {
     await dbCtx.sql`DELETE FROM jadwal_tambahan WHERE id = ${id};`;

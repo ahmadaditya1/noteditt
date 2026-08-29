@@ -32,7 +32,7 @@ interface DashboardProps {
 export default function Dashboard({ onLogout }: DashboardProps) {
   const [active, setActive] = useState<ActiveSection>('jadwal');
   const [data, setData] = useState<AllDashboardData>(EMPTY_DATA);
-  const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+  const [quote] = useState(QUOTES[0]);
 
   const refresh = useCallback(async () => {
     const result = await fetchAllDataFromServer();
@@ -40,7 +40,10 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   }, []);
 
   // Always query PostgreSQL before considering the local fallback.
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    const initialFetch = window.setTimeout(() => void refresh(), 0);
+    return () => window.clearTimeout(initialFetch);
+  }, [refresh]);
 
   useEffect(() => {
     const onVisibilityChange = () => {
@@ -51,7 +54,9 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   }, [refresh]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => void refresh(), 45_000);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh();
+    }, 45_000);
     return () => window.clearInterval(interval);
   }, [refresh]);
 
