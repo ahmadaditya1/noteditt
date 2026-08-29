@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { ensureTablesExist, getDb, formatDbError } from '@/lib/db';
 
+export const preferredRegion = 'sin1';
+
 export async function GET() {
   const sql = getDb();
   if (!sql) return NextResponse.json([]);
