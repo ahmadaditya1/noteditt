@@ -8,11 +8,11 @@ interface Props { catatan: Catatan[]; onChange: () => void; }
 export default function CatatanSection({ catatan, onChange }: Props) {
   const [text, setText] = useState('');
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!text.trim()) return;
-    addCatatan(text.trim());
+    await addCatatan(text.trim());
     setText('');
-    onChange();
+    await onChange();
   };
 
   return (
@@ -39,7 +39,7 @@ export default function CatatanSection({ catatan, onChange }: Props) {
               <p className="catatan-content" style={{ userSelect: 'text' }}>{c.content}</p>
               <div className="catatan-footer">
                 <span className="catatan-time">🕐 {c.createdAt}</span>
-                <button className="btn-delete" onClick={() => { deleteCatatan(c.id); onChange(); }}>×</button>
+                <button className="btn-delete" onClick={async () => { await deleteCatatan(c.id); await onChange(); }}>×</button>
               </div>
             </div>
           ))

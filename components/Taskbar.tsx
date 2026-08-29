@@ -1,16 +1,40 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { WindowConfig } from './WindowFrame';
+import type { SyncStatus } from '@/lib/storage';
 
 interface TaskbarProps {
   windows: WindowConfig[];
   activeId: string | null;
+  syncStatus: SyncStatus;
   onWindowClick: (id: string) => void;
   onLogout: () => void;
-  onSync: () => void;
+  onRefresh: () => void;
 }
 
-export default function Taskbar({ windows, activeId, onWindowClick, onLogout, onSync }: TaskbarProps) {
+function SyncIndicator({ status }: { status: SyncStatus }) {
+  if (status === 'loading') {
+    return (
+      <span title="Memuat data dari server…" style={{ fontSize: 10, cursor: 'default', whiteSpace: 'nowrap' }}>
+        ⏳ Loading…
+      </span>
+    );
+  }
+  if (status === 'synced') {
+    return (
+      <span title="Terhubung ke PostgreSQL — data tersinkron" style={{ fontSize: 10, cursor: 'default', whiteSpace: 'nowrap' }}>
+        🟢 Synced
+      </span>
+    );
+  }
+  return (
+    <span title="Mode offline — data dari localStorage, belum tersinkron ke cloud" style={{ fontSize: 10, cursor: 'default', whiteSpace: 'nowrap', color: '#800' }}>
+      🔴 Local only
+    </span>
+  );
+}
+
+export default function Taskbar({ windows, activeId, syncStatus, onWindowClick, onLogout, onRefresh }: TaskbarProps) {
   const [time, setTime] = useState('');
   const [showStart, setShowStart] = useState(false);
 
@@ -28,14 +52,12 @@ export default function Taskbar({ windows, activeId, onWindowClick, onLogout, on
 
   return (
     <div className="taskbar">
-      {/* Start button */}
       <div style={{ position: 'relative' }}>
         <button className="taskbar-start" onClick={() => setShowStart(s => !s)}>
           <span className="taskbar-start-icon">⊹</span>
           <b>Start</b>
         </button>
 
-        {/* Start menu popup */}
         {showStart && (
           <div style={{
             position: 'absolute',
@@ -46,7 +68,6 @@ export default function Taskbar({ windows, activeId, onWindowClick, onLogout, on
             boxShadow: 'var(--bevel-raised-2)',
             zIndex: 9999,
           }} onMouseLeave={() => setShowStart(false)}>
-            {/* Sidebar strip */}
             <div style={{
               position: 'absolute',
               top: 0,
@@ -69,11 +90,10 @@ export default function Taskbar({ windows, activeId, onWindowClick, onLogout, on
               }}>dashboard pribadi</span>
             </div>
 
-            {/* Menu items */}
             <div style={{ marginLeft: 22 }}>
               <StartMenuItem icon="🔒" label="Kunci / Keluar" onClick={() => { setShowStart(false); onLogout(); }} />
               <div style={{ height: 1, background: 'var(--win-dark)', margin: '2px 0', boxShadow: '0 1px 0 var(--win-white)' }} />
-              <StartMenuItem icon="☁️" label="Sinkronisasi ke DB" onClick={() => { setShowStart(false); onSync(); }} />
+              <StartMenuItem icon="🔄" label="Refresh dari Server" onClick={() => { setShowStart(false); onRefresh(); }} />
               <div style={{ height: 1, background: 'var(--win-dark)', margin: '2px 0', boxShadow: '0 1px 0 var(--win-white)' }} />
               <StartMenuItem icon="🖥️" label="Dashboard" onClick={() => setShowStart(false)} />
             </div>
@@ -83,7 +103,6 @@ export default function Taskbar({ windows, activeId, onWindowClick, onLogout, on
 
       <div className="taskbar-separator" />
 
-      {/* Open windows */}
       <div className="taskbar-windows">
         {openWindows.map(w => (
           <button
@@ -98,8 +117,8 @@ export default function Taskbar({ windows, activeId, onWindowClick, onLogout, on
         ))}
       </div>
 
-      {/* System tray */}
       <div className="taskbar-tray">
+        <SyncIndicator status={syncStatus} />
         <span title="Dashboard Pribadi" style={{ fontSize: 13, cursor: 'default' }}>💻</span>
         <span className="taskbar-clock">{time}</span>
       </div>

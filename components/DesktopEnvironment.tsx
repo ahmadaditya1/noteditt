@@ -9,16 +9,17 @@ import CatatanSection from './sections/CatatanSection';
 import ContentCalendarSection from './sections/ContentCalendarSection';
 import ProyekSection from './sections/ProyekSection';
 import {
-  getAllLocalData,
+  EMPTY_DATA,
   fetchAllDataFromServer,
-  pushAllLocalDataToServer,
+  subscribeSyncStatus,
+  type AllDashboardData,
+  type SyncStatus,
 } from '@/lib/storage';
 
 interface DesktopEnvironmentProps {
   onLogout: () => void;
 }
 
-// Icon paths
 const ICON = {
   calendar: '/icons/calendar.png',
   notes: '/icons/notes.png',
@@ -52,13 +53,11 @@ function getRandomPositions(): Record<string, IconPosition> {
   const width = typeof window !== 'undefined' ? window.innerWidth : 1024;
   const height = typeof window !== 'undefined' ? window.innerHeight - 60 : 700;
 
-  // Grid dimensions
   const slotW = 120;
   const slotH = 110;
   const cols = Math.max(3, Math.floor((width - 60) / slotW));
   const rows = Math.max(3, Math.floor((height - 60) / slotH));
 
-  // Generate all grid slots
   const allSlots: { col: number; row: number }[] = [];
   for (let c = 0; c < cols; c++) {
     for (let r = 0; r < rows; r++) {
@@ -66,7 +65,6 @@ function getRandomPositions(): Record<string, IconPosition> {
     }
   }
 
-  // Shuffle grid slots
   for (let i = allSlots.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [allSlots[i], allSlots[j]] = [allSlots[j], allSlots[i]];
@@ -87,6 +85,8 @@ function getRandomPositions(): Record<string, IconPosition> {
 
 let zCounter = 10;
 
+const POLL_INTERVAL_MS = 45_000;
+
 export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps) {
   const [windows, setWindows] = useState<WindowConfig[]>(
     DEFAULT_WINDOWS.map(w => ({ ...w, zIndex: zCounter++ }))
@@ -94,44 +94,49 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
   const [iconPositions, setIconPositions] = useState<Record<string, IconPosition>>({});
+  const [dataLoading, setDataLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('loading');
 
-  // Generate random positions on client mount (each refresh / reopen)
   useEffect(() => {
     setIconPositions(getRandomPositions());
   }, []);
 
-  const moveIcon = useCallback((id: string, pos: IconPosition) => {
-    setIconPositions(prev => ({ ...prev, [id]: pos }));
-  }, []);
+  useEffect(() => subscribeSyncStatus(setSyncStatus), []);
 
-  // Data state
-  const [data, setData] = useState(getAllLocalData);
+  const [data, setData] = useState<AllDashboardData>(EMPTY_DATA);
 
+  /** Fetch dari PostgreSQL (SSOT); fallback localStorage hanya jika gagal total. */
   const refresh = useCallback(async () => {
-    // 1. Segera update dari localStorage agar UI responsif seketika (0ms)
-    setData(getAllLocalData());
-
-    // 2. Kemudian sync dengan server di background
-    const serverData = await fetchAllDataFromServer();
-    if (serverData && serverData.connected !== false) {
-      setData(serverData);
-    }
+    const result = await fetchAllDataFromServer();
+    setData(result.data);
+    setDataLoading(false);
   }, []);
 
-  // Initial load dari server saat pertama buka
+  // Initial load: server first
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  const handleSync = useCallback(async () => {
-    const result = await pushAllLocalDataToServer();
-    if (result.success) {
-      alert(`✅ Sinkronisasi berhasil!\n${result.message}`);
-      refresh();
-    } else {
-      alert(`⚠️ ${result.message}`);
-    }
+  // Refetch saat tab kembali fokus
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refresh();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [refresh]);
+
+  // Polling ringan setiap 45 detik
+  useEffect(() => {
+    const interval = setInterval(refresh, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [refresh]);
+
+  const moveIcon = useCallback((id: string, pos: IconPosition) => {
+    setIconPositions(prev => ({ ...prev, [id]: pos }));
+  }, []);
 
   const openWindow = useCallback((id: string) => {
     setWindows(prev => prev.map(w => {
@@ -173,6 +178,9 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
   }, [windows, activeId, focusWindow, minimizeWindow]);
 
   const renderWindowContent = (id: string) => {
+    if (dataLoading) {
+      return <p className="empty-state" style={{ padding: 16 }}>Memuat data dari server…</p>;
+    }
     switch (id) {
       case 'jadwal':  return <JadwalSection jadwalKuliah={data.jadwalKuliah} jadwalTambahan={data.jadwalTambahan} onChange={refresh} />;
       case 'tugas':   return <TugasSection tugas={data.tugas} onChange={refresh} />;
@@ -185,9 +193,7 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
 
   return (
     <>
-      {/* Desktop area */}
       <div className="desktop" onClick={() => setSelectedIcon(null)}>
-        {/* Desktop icons */}
         <div className="desktop-icons">
           {DESKTOP_ICONS.map(icon => (
             <DesktopIcon
@@ -205,7 +211,6 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
           ))}
         </div>
 
-        {/* Windows */}
         {windows.map(win => (
           <WindowFrame
             key={win.id}
@@ -221,13 +226,13 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
         ))}
       </div>
 
-      {/* Taskbar */}
       <Taskbar
         windows={windows}
         activeId={activeId}
+        syncStatus={syncStatus}
         onWindowClick={handleTaskbarClick}
         onLogout={onLogout}
-        onSync={handleSync}
+        onRefresh={refresh}
       />
     </>
   );

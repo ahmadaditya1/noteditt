@@ -16,6 +16,57 @@ const KEYS = {
   PROJECTS: 'projects',
 } as const;
 
+export type SyncStatus = 'loading' | 'synced' | 'local_only';
+
+export interface AllDashboardData {
+  jadwalKuliah: JadwalKuliah[];
+  jadwalTambahan: JadwalTambahan[];
+  tugas: Tugas[];
+  catatan: Catatan[];
+  konten: KontenCalendar[];
+  proyek: Proyek[];
+}
+
+export interface FetchResult {
+  data: AllDashboardData;
+  source: 'server' | 'local';
+  connected: boolean;
+}
+
+export interface MutationResult {
+  success: boolean;
+  localOnly?: boolean;
+}
+
+const EMPTY_DATA: AllDashboardData = {
+  jadwalKuliah: [],
+  jadwalTambahan: [],
+  tugas: [],
+  catatan: [],
+  konten: [],
+  proyek: [],
+};
+
+// ─── Sync status (global, client-only) ───────────────────────────────────────
+let syncStatus: SyncStatus = 'loading';
+const syncListeners = new Set<(s: SyncStatus) => void>();
+
+function setSyncStatus(status: SyncStatus): void {
+  syncStatus = status;
+  syncListeners.forEach((fn) => fn(status));
+}
+
+export function getSyncStatus(): SyncStatus {
+  return syncStatus;
+}
+
+export function subscribeSyncStatus(listener: (s: SyncStatus) => void): () => void {
+  syncListeners.add(listener);
+  listener(syncStatus);
+  return () => syncListeners.delete(listener);
+}
+
+// ─── localStorage primitives ─────────────────────────────────────────────────
 function genId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -39,14 +90,20 @@ function set<T>(key: string, value: T): void {
   }
 }
 
-// ─── Toast Notification untuk Sync Errors ─────────────────────────────────────
-// Menampilkan pesan error kecil di pojok bawah kanan ketika data gagal disimpan
-// ke database. User perlu tahu bahwa data hanya tersimpan di browser.
+function cacheAllData(data: AllDashboardData): void {
+  set(KEYS.SCHEDULE_KULIAH, data.jadwalKuliah);
+  set(KEYS.SCHEDULE_TAMBAHAN, data.jadwalTambahan);
+  set(KEYS.TASKS, data.tugas);
+  set(KEYS.NOTES, data.catatan);
+  set(KEYS.CONTENT_CALENDAR, data.konten);
+  set(KEYS.PROJECTS, data.proyek);
+}
+
+// ─── Toast notifications ─────────────────────────────────────────────────────
 function showSyncWarning(message: string): void {
   if (typeof window === 'undefined') return;
   console.warn('[Sync]', message);
 
-  // Hindari spam toast — max 1 setiap 3 detik
   const now = Date.now();
   const lastShown = (window as unknown as Record<string, number>).__lastSyncToast || 0;
   if (now - lastShown < 3000) return;
@@ -66,107 +123,120 @@ function showSyncWarning(message: string): void {
   setTimeout(() => {
     toast.style.opacity = '0';
     setTimeout(() => toast.remove(), 300);
-  }, 5000);
+  }, 6000);
+}
+
+interface ApiBody {
+  success?: boolean;
+  dbStatus?: string;
+  mode?: string;
+  message?: string;
+  error?: string;
 }
 
 /**
- * Helper: kirim request ke API dan cek apakah berhasil.
- * - Cek response.ok (HTTP status)
- * - Cek body.success === false atau body.mode === 'local'
- * - Tampilkan toast ke user jika gagal
- * - Return true jika berhasil tersimpan ke database
+ * Kirim request ke API. Return true hanya jika DB connected dan operasi sukses.
+ * Tampilkan toast jika gagal.
  */
 async function apiRequest(url: string, options: RequestInit): Promise<boolean> {
   try {
     const res = await fetch(url, options);
+    const body: ApiBody = await res.json().catch(() => ({}));
 
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      const msg = body.error || body.message || `Server error (HTTP ${res.status})`;
+    if (!res.ok || body.success === false || body.dbStatus === 'not_connected' || body.dbStatus === 'query_failed' || body.mode === 'local') {
+      const msg = body.message || body.error || `Server error (HTTP ${res.status})`;
       console.error('[API]', msg, { url, status: res.status, body });
-      showSyncWarning(`Data gagal disimpan ke database: ${msg}`);
-      return false;
-    }
-
-    const body = await res.json().catch(() => ({}));
-
-    if (body.success === false || body.mode === 'local') {
-      const msg = body.message || 'Database tidak terhubung.';
-      console.warn('[API] Server responded with failure:', body);
-      showSyncWarning(msg);
+      showSyncWarning(`Belum tersinkron ke cloud: ${msg}`);
+      setSyncStatus('local_only');
       return false;
     }
 
     return true;
   } catch (err) {
     console.error('[API] Network error:', err);
-    showSyncWarning('Gagal menghubungi server. Data hanya tersimpan di browser.');
+    showSyncWarning('Gagal menghubungi server. Perubahan HANYA tersimpan lokal.');
+    setSyncStatus('local_only');
     return false;
   }
 }
 
-// ─── Unified Data Sync with Server (PostgreSQL) ──────────────────────────────
-export interface AllDashboardData {
-  connected?: boolean;
-  jadwalKuliah: JadwalKuliah[];
-  jadwalTambahan: JadwalTambahan[];
-  tugas: Tugas[];
-  catatan: Catatan[];
-  konten: KontenCalendar[];
-  proyek: Proyek[];
+/** Simpan ke localStorage sebagai fallback offline setelah API gagal. */
+function saveLocalFallback(message: string): MutationResult {
+  setSyncStatus('local_only');
+  showSyncWarning(message);
+  return { success: false, localOnly: true };
 }
 
+// ─── Read helpers (localStorage cache) ───────────────────────────────────────
 export function getAllLocalData(): AllDashboardData {
   return {
-    jadwalKuliah: getJadwalKuliah(),
-    jadwalTambahan: getJadwalTambahan(),
-    tugas: getTugas(),
-    catatan: getCatatan(),
-    konten: getKonten(),
-    proyek: getProyek(),
+    jadwalKuliah: get<JadwalKuliah[]>(KEYS.SCHEDULE_KULIAH, []),
+    jadwalTambahan: get<JadwalTambahan[]>(KEYS.SCHEDULE_TAMBAHAN, []),
+    tugas: get<Tugas[]>(KEYS.TASKS, []),
+    catatan: get<Catatan[]>(KEYS.NOTES, []),
+    konten: get<KontenCalendar[]>(KEYS.CONTENT_CALENDAR, []),
+    proyek: get<Proyek[]>(KEYS.PROJECTS, []),
   };
 }
 
-export async function fetchAllDataFromServer(): Promise<AllDashboardData | null> {
+/**
+ * Fetch data dari server (PostgreSQL = SSOT).
+ * Fallback ke localStorage HANYA jika fetch gagal total.
+ */
+export async function fetchAllDataFromServer(): Promise<FetchResult> {
+  setSyncStatus('loading');
+
   try {
     const res = await fetch('/api/data');
-    if (!res.ok) {
-      console.warn('[fetchAllData] Server returned', res.status);
-      return null;
-    }
     const data = await res.json();
 
-    // If server database is not configured or offline, never wipe out local storage
-    if (!data || data.connected === false) {
-      if (data?.error) {
-        console.warn('[fetchAllData] DB not connected:', data.error);
-      }
-      return null;
+    if (res.ok && data.connected === true && data.dbStatus === 'connected') {
+      const result: AllDashboardData = {
+        jadwalKuliah: data.jadwalKuliah ?? [],
+        jadwalTambahan: data.jadwalTambahan ?? [],
+        tugas: data.tugas ?? [],
+        catatan: data.catatan ?? [],
+        konten: data.konten ?? [],
+        proyek: data.proyek ?? [],
+      };
+      cacheAllData(result);
+      setSyncStatus('synced');
+      return { data: result, source: 'server', connected: true };
     }
 
-    // Cache to localStorage only if connected database returned valid data
-    if (Array.isArray(data.jadwalKuliah)) set(KEYS.SCHEDULE_KULIAH, data.jadwalKuliah);
-    if (Array.isArray(data.jadwalTambahan)) set(KEYS.SCHEDULE_TAMBAHAN, data.jadwalTambahan);
-    if (Array.isArray(data.tugas)) set(KEYS.TASKS, data.tugas);
-    if (Array.isArray(data.catatan)) set(KEYS.NOTES, data.catatan);
-    if (Array.isArray(data.konten)) set(KEYS.CONTENT_CALENDAR, data.konten);
-    if (Array.isArray(data.proyek)) set(KEYS.PROJECTS, data.proyek);
+    // A malformed query/schema is not an offline condition: never silently
+    // replace server data with an older browser cache in that case.
+    if (data.dbStatus === 'not_connected' || res.status === 503) {
+      console.warn('[fetchAllData] Server unavailable, using localStorage fallback:', data);
+      setSyncStatus('local_only');
+      return { data: getAllLocalData(), source: 'local', connected: false };
+    }
 
-    return data as AllDashboardData;
+    console.error('[fetchAllData] Server query failed; local cache intentionally not used:', data);
+    setSyncStatus('local_only');
+    return { data: EMPTY_DATA, source: 'server', connected: false };
   } catch (error) {
-    console.warn('Database server not reachable, using localStorage data:', error);
-    return null;
+    console.warn('[fetchAllData] Network error, using localStorage fallback:', error);
+    setSyncStatus('local_only');
+    return { data: getAllLocalData(), source: 'local', connected: false };
   }
 }
 
-// ─── Migrasi localStorage → Supabase (sinkronisasi satu arah) ────────────────
+/**
+ * Setelah mutasi dikonfirmasi API, cache selalu diisi ulang dari snapshot DB.
+ * Dengan begitu localStorage tidak pernah menjadi sumber data untuk jalur sukses.
+ */
+async function refreshCacheAfterConfirmedMutation(): Promise<void> {
+  await fetchAllDataFromServer();
+}
+
+/** @deprecated Gunakan fetchAllDataFromServer — migrasi one-way untuk data lama. */
 export async function pushAllLocalDataToServer(): Promise<{ success: boolean; message: string }> {
   const local = getAllLocalData();
   const results: string[] = [];
   let hasError = false;
 
   try {
-    // Jadwal Kuliah
     if (local.jadwalKuliah.length > 0) {
       const ok = await apiRequest('/api/schedule-kuliah', {
         method: 'POST',
@@ -177,7 +247,6 @@ export async function pushAllLocalDataToServer(): Promise<{ success: boolean; me
       else { results.push('❌ jadwal kuliah gagal'); hasError = true; }
     }
 
-    // Jadwal Tambahan
     for (const item of local.jadwalTambahan) {
       const ok = await apiRequest('/api/schedule-tambahan', {
         method: 'POST',
@@ -186,55 +255,49 @@ export async function pushAllLocalDataToServer(): Promise<{ success: boolean; me
       });
       if (!ok) hasError = true;
     }
-    if (local.jadwalTambahan.length > 0) results.push(hasError ? '❌ jadwal tambahan (sebagian gagal)' : `✅ ${local.jadwalTambahan.length} jadwal tambahan`);
+    if (local.jadwalTambahan.length > 0) {
+      results.push(hasError ? '❌ jadwal tambahan (sebagian gagal)' : `✅ ${local.jadwalTambahan.length} jadwal tambahan`);
+    }
 
-    // Tugas
-    let tugasError = false;
     for (const item of local.tugas) {
       const ok = await apiRequest('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(item),
       });
-      if (!ok) { tugasError = true; hasError = true; }
+      if (!ok) hasError = true;
     }
-    if (local.tugas.length > 0) results.push(tugasError ? '❌ tugas (sebagian gagal)' : `✅ ${local.tugas.length} tugas`);
+    if (local.tugas.length > 0) results.push(hasError ? '❌ tugas (sebagian gagal)' : `✅ ${local.tugas.length} tugas`);
 
-    // Catatan
-    let catatanError = false;
     for (const item of local.catatan) {
       const ok = await apiRequest('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(item),
       });
-      if (!ok) { catatanError = true; hasError = true; }
+      if (!ok) hasError = true;
     }
-    if (local.catatan.length > 0) results.push(catatanError ? '❌ catatan (sebagian gagal)' : `✅ ${local.catatan.length} catatan`);
+    if (local.catatan.length > 0) results.push(hasError ? '❌ catatan (sebagian gagal)' : `✅ ${local.catatan.length} catatan`);
 
-    // Konten Calendar
-    let kontenError = false;
     for (const item of local.konten) {
       const ok = await apiRequest('/api/content-calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(item),
       });
-      if (!ok) { kontenError = true; hasError = true; }
+      if (!ok) hasError = true;
     }
-    if (local.konten.length > 0) results.push(kontenError ? '❌ konten (sebagian gagal)' : `✅ ${local.konten.length} konten`);
+    if (local.konten.length > 0) results.push(hasError ? '❌ konten (sebagian gagal)' : `✅ ${local.konten.length} konten`);
 
-    // Proyek
-    let proyekError = false;
     for (const item of local.proyek) {
       const ok = await apiRequest('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(item),
       });
-      if (!ok) { proyekError = true; hasError = true; }
+      if (!ok) hasError = true;
     }
-    if (local.proyek.length > 0) results.push(proyekError ? '❌ proyek (sebagian gagal)' : `✅ ${local.proyek.length} proyek`);
+    if (local.proyek.length > 0) results.push(hasError ? '❌ proyek (sebagian gagal)' : `✅ ${local.proyek.length} proyek`);
 
     const total = local.jadwalKuliah.length + local.jadwalTambahan.length +
       local.tugas.length + local.catatan.length + local.konten.length + local.proyek.length;
@@ -243,127 +306,195 @@ export async function pushAllLocalDataToServer(): Promise<{ success: boolean; me
       return { success: false, message: 'Tidak ada data lokal yang perlu disinkronisasi.' };
     }
 
-    return {
-      success: !hasError,
-      message: results.join(', '),
-    };
+    if (!hasError) setSyncStatus('synced');
+    return { success: !hasError, message: results.join(', ') };
   } catch (err) {
     console.error('Sync error:', err);
     return { success: false, message: 'Gagal menghubungi server.' };
   }
 }
 
-
 // ─── Jadwal Kuliah ──────────────────────────────────────────────────────────
 export const getJadwalKuliah = (): JadwalKuliah[] =>
   get<JadwalKuliah[]>(KEYS.SCHEDULE_KULIAH, []);
 
-export const saveJadwalKuliah = async (list: JadwalKuliah[]): Promise<void> => {
-  set(KEYS.SCHEDULE_KULIAH, list);
-  await apiRequest('/api/schedule-kuliah', {
+export async function saveJadwalKuliah(list: JadwalKuliah[]): Promise<MutationResult> {
+  const ok = await apiRequest('/api/schedule-kuliah', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ items: list }),
   });
-};
-
-export const addJadwalKuliah = async (item: Omit<JadwalKuliah, 'id'>): Promise<void> => {
-  const list = getJadwalKuliah();
-  const newItem: JadwalKuliah = { ...item, id: genId() };
-  list.push(newItem);
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
   set(KEYS.SCHEDULE_KULIAH, list);
+  return saveLocalFallback('Import jadwal HANYA tersimpan lokal dan belum tersinkron ke cloud.');
+}
 
-  await apiRequest('/api/schedule-kuliah', {
+export async function addJadwalKuliah(item: Omit<JadwalKuliah, 'id'>): Promise<MutationResult> {
+  const newItem: JadwalKuliah = { ...item, id: genId() };
+  const ok = await apiRequest('/api/schedule-kuliah', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(newItem),
   });
-};
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
+  set(KEYS.SCHEDULE_KULIAH, [...getJadwalKuliah(), newItem]);
+  return saveLocalFallback('Jadwal kuliah HANYA tersimpan lokal dan belum tersinkron ke cloud.');
+}
 
-export const deleteJadwalKuliah = async (id: string): Promise<void> => {
-  set(KEYS.SCHEDULE_KULIAH, getJadwalKuliah().filter((x) => x.id !== id));
-  await apiRequest(`/api/schedule-kuliah?id=${id}`, { method: 'DELETE' });
-};
+export async function deleteJadwalKuliah(id: string): Promise<MutationResult> {
+  const ok = await apiRequest(`/api/schedule-kuliah?id=${id}`, { method: 'DELETE' });
+  const list = getJadwalKuliah().filter((x) => x.id !== id);
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
+  set(KEYS.SCHEDULE_KULIAH, list);
+  return saveLocalFallback('Penghapusan jadwal HANYA tersimpan lokal.');
+}
 
 // ─── Jadwal Tambahan ─────────────────────────────────────────────────────────
 export const getJadwalTambahan = (): JadwalTambahan[] =>
   get<JadwalTambahan[]>(KEYS.SCHEDULE_TAMBAHAN, []);
 
-export const saveJadwalTambahan = async (list: JadwalTambahan[]): Promise<void> => {
+export async function saveJadwalTambahan(list: JadwalTambahan[]): Promise<MutationResult> {
+  let allOk = true;
+  for (const item of list) {
+    const ok = await apiRequest('/api/schedule-tambahan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(item),
+    });
+    if (!ok) allOk = false;
+  }
+  if (allOk) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
   set(KEYS.SCHEDULE_TAMBAHAN, list);
-};
+  return saveLocalFallback('Jadwal tambahan HANYA tersimpan lokal.');
+}
 
-export const addJadwalTambahan = async (item: Omit<JadwalTambahan, 'id'>): Promise<void> => {
-  const list = getJadwalTambahan();
+export async function addJadwalTambahan(item: Omit<JadwalTambahan, 'id'>): Promise<MutationResult> {
   const newItem: JadwalTambahan = { ...item, id: genId() };
-  list.push(newItem);
-  list.sort((a, b) => a.tanggal.localeCompare(b.tanggal));
-  set(KEYS.SCHEDULE_TAMBAHAN, list);
-
-  await apiRequest('/api/schedule-tambahan', {
+  const ok = await apiRequest('/api/schedule-tambahan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(newItem),
   });
-};
+  const list = [...getJadwalTambahan(), newItem].sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
+  set(KEYS.SCHEDULE_TAMBAHAN, list);
+  return saveLocalFallback('Jadwal tambahan HANYA tersimpan lokal dan belum tersinkron ke cloud.');
+}
 
-export const deleteJadwalTambahan = async (id: string): Promise<void> => {
-  set(KEYS.SCHEDULE_TAMBAHAN, getJadwalTambahan().filter((x) => x.id !== id));
-  await apiRequest(`/api/schedule-tambahan?id=${id}`, { method: 'DELETE' });
-};
+export async function deleteJadwalTambahan(id: string): Promise<MutationResult> {
+  const ok = await apiRequest(`/api/schedule-tambahan?id=${id}`, { method: 'DELETE' });
+  const list = getJadwalTambahan().filter((x) => x.id !== id);
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
+  set(KEYS.SCHEDULE_TAMBAHAN, list);
+  return saveLocalFallback('Penghapusan jadwal tambahan HANYA tersimpan lokal.');
+}
 
 // ─── Tugas ──────────────────────────────────────────────────────────────────
 export const getTugas = (): Tugas[] => get<Tugas[]>(KEYS.TASKS, []);
 
-export const saveTugas = async (list: Tugas[]): Promise<void> => {
+export async function saveTugas(list: Tugas[]): Promise<MutationResult> {
+  let allOk = true;
+  for (const item of list) {
+    const ok = await apiRequest('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(item),
+    });
+    if (!ok) allOk = false;
+  }
+  if (allOk) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
   set(KEYS.TASKS, list);
-};
+  return saveLocalFallback('Tugas HANYA tersimpan lokal.');
+}
 
-export const addTugas = async (item: Omit<Tugas, 'id'>): Promise<void> => {
-  const list = getTugas();
+export async function addTugas(item: Omit<Tugas, 'id'>): Promise<MutationResult> {
   const newItem: Tugas = { ...item, id: genId() };
-  list.push(newItem);
-  set(KEYS.TASKS, list);
-
-  await apiRequest('/api/tasks', {
+  const ok = await apiRequest('/api/tasks', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(newItem),
   });
-};
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
+  set(KEYS.TASKS, [...getTugas(), newItem]);
+  return saveLocalFallback('Tugas HANYA tersimpan lokal dan belum tersinkron ke cloud.');
+}
 
-export const toggleTugas = async (id: string): Promise<void> => {
-  let newDone = false;
-  const list = getTugas().map((t) => {
-    if (t.id === id) {
-      newDone = !t.done;
-      return { ...t, done: newDone };
-    }
-    return t;
-  });
-  set(KEYS.TASKS, list);
+export async function toggleTugas(id: string): Promise<MutationResult> {
+  const current = getTugas().find((t) => t.id === id);
+  if (!current) return { success: false };
+  const newDone = !current.done;
 
-  await apiRequest('/api/tasks', {
+  const ok = await apiRequest('/api/tasks', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id, done: newDone }),
   });
-};
+  const list = getTugas().map((t) => (t.id === id ? { ...t, done: newDone } : t));
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
+  set(KEYS.TASKS, list);
+  return saveLocalFallback('Perubahan tugas HANYA tersimpan lokal.');
+}
 
-export const deleteTugas = async (id: string): Promise<void> => {
-  set(KEYS.TASKS, getTugas().filter((x) => x.id !== id));
-  await apiRequest(`/api/tasks?id=${id}`, { method: 'DELETE' });
-};
+export async function deleteTugas(id: string): Promise<MutationResult> {
+  const ok = await apiRequest(`/api/tasks?id=${id}`, { method: 'DELETE' });
+  const list = getTugas().filter((x) => x.id !== id);
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
+  set(KEYS.TASKS, list);
+  return saveLocalFallback('Penghapusan tugas HANYA tersimpan lokal.');
+}
 
 // ─── Catatan ─────────────────────────────────────────────────────────────────
 export const getCatatan = (): Catatan[] => get<Catatan[]>(KEYS.NOTES, []);
 
-export const saveCatatan = async (list: Catatan[]): Promise<void> => {
+export async function saveCatatan(list: Catatan[]): Promise<MutationResult> {
+  let allOk = true;
+  for (const item of list) {
+    const ok = await apiRequest('/api/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(item),
+    });
+    if (!ok) allOk = false;
+  }
+  if (allOk) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
   set(KEYS.NOTES, list);
-};
+  return saveLocalFallback('Catatan HANYA tersimpan lokal.');
+}
 
-export const addCatatan = async (content: string): Promise<void> => {
-  const list = getCatatan();
+export async function addCatatan(content: string): Promise<MutationResult> {
   const now = new Date();
   const createdAt = now.toLocaleDateString('id-ID', {
     day: 'numeric',
@@ -373,105 +504,168 @@ export const addCatatan = async (content: string): Promise<void> => {
     minute: '2-digit',
   });
   const newItem: Catatan = { id: genId(), content, createdAt };
-  list.unshift(newItem);
-  set(KEYS.NOTES, list);
 
-  await apiRequest('/api/notes', {
+  const ok = await apiRequest('/api/notes', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(newItem),
   });
-};
+  const list = [newItem, ...getCatatan()];
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
+  set(KEYS.NOTES, list);
+  return saveLocalFallback('Catatan HANYA tersimpan lokal dan belum tersinkron ke cloud.');
+}
 
-export const deleteCatatan = async (id: string): Promise<void> => {
-  set(KEYS.NOTES, getCatatan().filter((x) => x.id !== id));
-  await apiRequest(`/api/notes?id=${id}`, { method: 'DELETE' });
-};
+export async function deleteCatatan(id: string): Promise<MutationResult> {
+  const ok = await apiRequest(`/api/notes?id=${id}`, { method: 'DELETE' });
+  const list = getCatatan().filter((x) => x.id !== id);
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
+  set(KEYS.NOTES, list);
+  return saveLocalFallback('Penghapusan catatan HANYA tersimpan lokal.');
+}
 
 // ─── Content Calendar ────────────────────────────────────────────────────────
 export const getKonten = (): KontenCalendar[] =>
   get<KontenCalendar[]>(KEYS.CONTENT_CALENDAR, []);
 
-export const saveKonten = async (list: KontenCalendar[]): Promise<void> => {
+export async function saveKonten(list: KontenCalendar[]): Promise<MutationResult> {
+  let allOk = true;
+  for (const item of list) {
+    const ok = await apiRequest('/api/content-calendar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(item),
+    });
+    if (!ok) allOk = false;
+  }
+  if (allOk) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
   set(KEYS.CONTENT_CALENDAR, list);
-};
+  return saveLocalFallback('Konten HANYA tersimpan lokal.');
+}
 
-export const addKonten = async (item: Omit<KontenCalendar, 'id'>): Promise<void> => {
-  const list = getKonten();
+export async function addKonten(item: Omit<KontenCalendar, 'id'>): Promise<MutationResult> {
   const newItem: KontenCalendar = { ...item, id: genId() };
-  list.push(newItem);
-  list.sort((a, b) => a.tanggal.localeCompare(b.tanggal));
-  set(KEYS.CONTENT_CALENDAR, list);
-
-  await apiRequest('/api/content-calendar', {
+  const ok = await apiRequest('/api/content-calendar', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(newItem),
   });
-};
-
-export const cycleKontenStatus = async (id: string): Promise<void> => {
-  const cycle = ['Draft', 'Review', 'Terjadwal', 'Publish'] as const;
-  let nextStatus: typeof cycle[number] = 'Draft';
-  const list = getKonten().map((k) => {
-    if (k.id !== id) return k;
-    const idx = cycle.indexOf(k.status);
-    nextStatus = cycle[(idx + 1) % cycle.length];
-    return { ...k, status: nextStatus };
-  });
+  const list = [...getKonten(), newItem].sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
   set(KEYS.CONTENT_CALENDAR, list);
+  return saveLocalFallback('Konten HANYA tersimpan lokal dan belum tersinkron ke cloud.');
+}
 
-  await apiRequest('/api/content-calendar', {
+export async function cycleKontenStatus(id: string): Promise<MutationResult> {
+  const cycle = ['Draft', 'Review', 'Terjadwal', 'Publish'] as const;
+  const current = getKonten().find((k) => k.id === id);
+  if (!current) return { success: false };
+  const idx = cycle.indexOf(current.status);
+  const nextStatus = cycle[(idx + 1) % cycle.length];
+
+  const ok = await apiRequest('/api/content-calendar', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id, status: nextStatus }),
   });
-};
+  const list = getKonten().map((k) => (k.id === id ? { ...k, status: nextStatus } : k));
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
+  set(KEYS.CONTENT_CALENDAR, list);
+  return saveLocalFallback('Perubahan status konten HANYA tersimpan lokal.');
+}
 
-export const deleteKonten = async (id: string): Promise<void> => {
-  set(KEYS.CONTENT_CALENDAR, getKonten().filter((x) => x.id !== id));
-  await apiRequest(`/api/content-calendar?id=${id}`, { method: 'DELETE' });
-};
+export async function deleteKonten(id: string): Promise<MutationResult> {
+  const ok = await apiRequest(`/api/content-calendar?id=${id}`, { method: 'DELETE' });
+  const list = getKonten().filter((x) => x.id !== id);
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
+  set(KEYS.CONTENT_CALENDAR, list);
+  return saveLocalFallback('Penghapusan konten HANYA tersimpan lokal.');
+}
 
 // ─── Proyek ──────────────────────────────────────────────────────────────────
 export const getProyek = (): Proyek[] => get<Proyek[]>(KEYS.PROJECTS, []);
 
-export const saveProyek = async (list: Proyek[]): Promise<void> => {
+export async function saveProyek(list: Proyek[]): Promise<MutationResult> {
+  let allOk = true;
+  for (const item of list) {
+    const ok = await apiRequest('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(item),
+    });
+    if (!ok) allOk = false;
+  }
+  if (allOk) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
   set(KEYS.PROJECTS, list);
-};
+  return saveLocalFallback('Proyek HANYA tersimpan lokal.');
+}
 
-export const addProyek = async (item: Omit<Proyek, 'id'>): Promise<void> => {
-  const list = getProyek();
+export async function addProyek(item: Omit<Proyek, 'id'>): Promise<MutationResult> {
   const newItem: Proyek = { ...item, id: genId() };
-  list.push(newItem);
-  set(KEYS.PROJECTS, list);
-
-  await apiRequest('/api/projects', {
+  const ok = await apiRequest('/api/projects', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(newItem),
   });
-};
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
+  set(KEYS.PROJECTS, [...getProyek(), newItem]);
+  return saveLocalFallback('Proyek HANYA tersimpan lokal dan belum tersinkron ke cloud.');
+}
 
-export const cycleProyekStatus = async (id: string): Promise<void> => {
+export async function cycleProyekStatus(id: string): Promise<MutationResult> {
   const cycle = ['Rencana', 'Berjalan', 'Selesai'] as const;
-  let nextStatus: typeof cycle[number] = 'Rencana';
-  const list = getProyek().map((p) => {
-    if (p.id !== id) return p;
-    const idx = cycle.indexOf(p.status);
-    nextStatus = cycle[(idx + 1) % cycle.length];
-    return { ...p, status: nextStatus };
-  });
-  set(KEYS.PROJECTS, list);
+  const current = getProyek().find((p) => p.id === id);
+  if (!current) return { success: false };
+  const idx = cycle.indexOf(current.status);
+  const nextStatus = cycle[(idx + 1) % cycle.length];
 
-  await apiRequest('/api/projects', {
+  const ok = await apiRequest('/api/projects', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id, status: nextStatus }),
   });
-};
+  const list = getProyek().map((p) => (p.id === id ? { ...p, status: nextStatus } : p));
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
+  set(KEYS.PROJECTS, list);
+  return saveLocalFallback('Perubahan status proyek HANYA tersimpan lokal.');
+}
 
-export const deleteProyek = async (id: string): Promise<void> => {
-  set(KEYS.PROJECTS, getProyek().filter((x) => x.id !== id));
-  await apiRequest(`/api/projects?id=${id}`, { method: 'DELETE' });
-};
+export async function deleteProyek(id: string): Promise<MutationResult> {
+  const ok = await apiRequest(`/api/projects?id=${id}`, { method: 'DELETE' });
+  const list = getProyek().filter((x) => x.id !== id);
+  if (ok) {
+    await refreshCacheAfterConfirmedMutation();
+    return { success: true };
+  }
+  set(KEYS.PROJECTS, list);
+  return saveLocalFallback('Penghapusan proyek HANYA tersimpan lokal.');
+}
+
+export { EMPTY_DATA };

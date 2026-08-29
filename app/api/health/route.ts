@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server';
 import { getDb, formatDbError } from '@/lib/db';
 
 // Deploy ke region Singapore (sama dengan Supabase) untuk latency rendah
-export const preferredRegion = 'sin1';
-
 /**
  * GET /api/health
  *

@@ -7,15 +7,7 @@ import CatatanSection from '@/components/sections/CatatanSection';
 import ContentCalendarSection from '@/components/sections/ContentCalendarSection';
 import ProyekSection from '@/components/sections/ProyekSection';
 import { ActiveSection } from '@/lib/types';
-import {
-  getJadwalKuliah,
-  getJadwalTambahan,
-  getTugas,
-  getCatatan,
-  getKonten,
-  getProyek,
-  fetchAllDataFromServer,
-} from '@/lib/storage';
+import { EMPTY_DATA, fetchAllDataFromServer, type AllDashboardData } from '@/lib/storage';
 
 const QUOTES = [
   'Mulai dari yang bisa dikerjakan hari ini.',
@@ -39,56 +31,29 @@ interface DashboardProps {
 
 export default function Dashboard({ onLogout }: DashboardProps) {
   const [active, setActive] = useState<ActiveSection>('jadwal');
-  const [data, setData] = useState({
-    jadwalKuliah: getJadwalKuliah(),
-    jadwalTambahan: getJadwalTambahan(),
-    tugas: getTugas(),
-    catatan: getCatatan(),
-    konten: getKonten(),
-    proyek: getProyek(),
-  });
+  const [data, setData] = useState<AllDashboardData>(EMPTY_DATA);
   const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
 
-  // Fetch from server on mount so cross-device data is always up-to-date
-  useEffect(() => {
-    fetchAllDataFromServer().then((serverData) => {
-      if (serverData && serverData.connected !== false) {
-        setData({
-          jadwalKuliah: serverData.jadwalKuliah,
-          jadwalTambahan: serverData.jadwalTambahan,
-          tugas: serverData.tugas,
-          catatan: serverData.catatan,
-          konten: serverData.konten,
-          proyek: serverData.proyek,
-        });
-      }
-    });
-  }, []);
-
   const refresh = useCallback(async () => {
-    // 1. Segera update dari localStorage (0ms)
-    setData({
-      jadwalKuliah: getJadwalKuliah(),
-      jadwalTambahan: getJadwalTambahan(),
-      tugas: getTugas(),
-      catatan: getCatatan(),
-      konten: getKonten(),
-      proyek: getProyek(),
-    });
-
-    // 2. Kemudian sync dengan server
-    const serverData = await fetchAllDataFromServer();
-    if (serverData && serverData.connected !== false) {
-      setData({
-        jadwalKuliah: serverData.jadwalKuliah,
-        jadwalTambahan: serverData.jadwalTambahan,
-        tugas: serverData.tugas,
-        catatan: serverData.catatan,
-        konten: serverData.konten,
-        proyek: serverData.proyek,
-      });
-    }
+    const result = await fetchAllDataFromServer();
+    setData(result.data);
   }, []);
+
+  // Always query PostgreSQL before considering the local fallback.
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [refresh]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => void refresh(), 45_000);
+    return () => window.clearInterval(interval);
+  }, [refresh]);
 
   // Stats for header bar
   const pendingTugas = data.tugas.filter((t) => !t.done).length;

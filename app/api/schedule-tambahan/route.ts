@@ -1,35 +1,43 @@
 import { NextResponse } from 'next/server';
-import { ensureTablesExist, getDb, formatDbError } from '@/lib/db';
+import {
+  dbQueryFailedResponse,
+  dbSuccessResponse,
+  ensureDbReady,
+  requireDb,
+} from '@/lib/api-db';
 
-export const preferredRegion = 'sin1';
+const ROUTE = 'api/schedule-tambahan';
 
 export async function GET() {
-  const sql = getDb();
-  if (!sql) return NextResponse.json([]);
+  const dbCtx = requireDb(ROUTE);
+  if (!dbCtx.ok) return dbCtx.response;
+
+  const readyErr = await ensureDbReady(ROUTE, dbCtx.sql);
+  if (readyErr) return readyErr;
 
   try {
-    await ensureTablesExist();
-    const list = await sql`
+    const list = await dbCtx.sql`
       SELECT id, tanggal, jam, judul, catatan
       FROM jadwal_tambahan
       ORDER BY tanggal ASC;
     `;
-    return NextResponse.json(list);
+    console.log(`[${ROUTE}] GET success — ${list.length} rows`);
+    return dbSuccessResponse({ data: list });
   } catch (error) {
-    const { message, code } = formatDbError(error);
-    console.error('[api/schedule-tambahan] GET failed:', { message, code });
-    return NextResponse.json([], { status: 500 });
+    return dbQueryFailedResponse(ROUTE, error);
   }
 }
 
 export async function POST(request: Request) {
-  const sql = getDb();
-  if (!sql) return NextResponse.json({ success: false, mode: 'local', message: 'Database belum terhubung.' });
+  const dbCtx = requireDb(ROUTE);
+  if (!dbCtx.ok) return dbCtx.response;
+
+  const readyErr = await ensureDbReady(ROUTE, dbCtx.sql);
+  if (readyErr) return readyErr;
 
   try {
-    await ensureTablesExist();
     const { id, tanggal, jam = '', judul, catatan = '' } = await request.json();
-    await sql`
+    await dbCtx.sql`
       INSERT INTO jadwal_tambahan (id, tanggal, jam, judul, catatan)
       VALUES (${id}, ${tanggal}, ${jam}, ${judul}, ${catatan})
       ON CONFLICT (id) DO UPDATE SET
@@ -39,28 +47,31 @@ export async function POST(request: Request) {
         catatan = EXCLUDED.catatan;
     `;
 
-    return NextResponse.json({ success: true });
+    console.log(`[${ROUTE}] POST success — id=${id}`);
+    return dbSuccessResponse({});
   } catch (error) {
-    const { message, code } = formatDbError(error);
-    console.error('[api/schedule-tambahan] POST failed:', { message, code });
-    return NextResponse.json({ success: false, error: message, code }, { status: 500 });
+    return dbQueryFailedResponse(ROUTE, error);
   }
 }
 
 export async function DELETE(request: Request) {
-  const sql = getDb();
-  if (!sql) return NextResponse.json({ success: false, mode: 'local', message: 'Database belum terhubung.' });
+  const dbCtx = requireDb(ROUTE);
+  if (!dbCtx.ok) return dbCtx.response;
+
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
-  if (!id) return NextResponse.json({ success: false, error: 'ID tidak ditemukan' }, { status: 400 });
+  if (!id) {
+    return NextResponse.json({ success: false, dbStatus: 'connected', error: 'ID tidak ditemukan' }, { status: 400 });
+  }
+
+  const readyErr = await ensureDbReady(ROUTE, dbCtx.sql);
+  if (readyErr) return readyErr;
 
   try {
-    await ensureTablesExist();
-    await sql`DELETE FROM jadwal_tambahan WHERE id = ${id};`;
-    return NextResponse.json({ success: true });
+    await dbCtx.sql`DELETE FROM jadwal_tambahan WHERE id = ${id};`;
+    console.log(`[${ROUTE}] DELETE success — id=${id}`);
+    return dbSuccessResponse({});
   } catch (error) {
-    const { message, code } = formatDbError(error);
-    console.error('[api/schedule-tambahan] DELETE failed:', { message, code });
-    return NextResponse.json({ success: false, error: message, code }, { status: 500 });
+    return dbQueryFailedResponse(ROUTE, error);
   }
 }

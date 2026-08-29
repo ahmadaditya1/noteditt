@@ -1,31 +1,34 @@
 import { NextResponse } from 'next/server';
-import { ensureTablesExist, getDb, formatDbError } from '@/lib/db';
+import {
+  dbQueryFailedResponse,
+  dbSuccessResponse,
+  ensureDbReady,
+  requireDb,
+} from '@/lib/api-db';
 import { JadwalKuliah, JadwalTambahan, Tugas, Catatan, KontenCalendar, Proyek } from '@/lib/types';
 
-export const preferredRegion = 'sin1';
+const ROUTE = 'api/data';
 
 export async function GET() {
-  const sql = getDb();
-  if (!sql) {
-    return NextResponse.json({
-      connected: false,
-      message: 'Database belum terhubung (menggunakan penyimpanan lokal browser).',
-    });
-  }
+  const dbCtx = requireDb(ROUTE);
+  if (!dbCtx.ok) return dbCtx.response;
+
+  const readyErr = await ensureDbReady(ROUTE, dbCtx.sql);
+  if (readyErr) return readyErr;
 
   try {
-    await ensureTablesExist();
-
     const [rawKuliah, rawTambahan, rawTugas, rawCatatan, rawKonten, rawProyek] = await Promise.all([
-      sql`SELECT id, hari, jam_mulai as "jamMulai", jam_selesai as "jamSelesai", mata_kuliah as "mataKuliah", ruang, kelas FROM jadwal_kuliah;`,
-      sql`SELECT id, tanggal, jam, judul, catatan FROM jadwal_tambahan ORDER BY tanggal ASC;`,
-      sql`SELECT id, title, cat, deadline, done FROM tugas;`,
-      sql`SELECT id, content, created_at as "createdAt" FROM catatan;`,
-      sql`SELECT id, tanggal, platform, status, caption FROM konten_calendar ORDER BY tanggal ASC;`,
-      sql`SELECT id, nama, status, deskripsi FROM proyek;`,
+      dbCtx.sql`SELECT id, hari, jam_mulai as "jamMulai", jam_selesai as "jamSelesai", mata_kuliah as "mataKuliah", ruang, kelas FROM jadwal_kuliah;`,
+      dbCtx.sql`SELECT id, tanggal, jam, judul, catatan FROM jadwal_tambahan ORDER BY tanggal ASC;`,
+      dbCtx.sql`SELECT id, title, cat, deadline, done FROM tugas;`,
+      dbCtx.sql`SELECT id, content, created_at as "createdAt" FROM catatan;`,
+      dbCtx.sql`SELECT id, tanggal, platform, status, caption FROM konten_calendar ORDER BY tanggal ASC;`,
+      dbCtx.sql`SELECT id, nama, status, deskripsi FROM proyek;`,
     ]);
 
-    return NextResponse.json({
+    console.log(`[${ROUTE}] GET success — all tables queried`);
+
+    return dbSuccessResponse({
       connected: true,
       jadwalKuliah: rawKuliah as unknown as JadwalKuliah[],
       jadwalTambahan: rawTambahan as unknown as JadwalTambahan[],
@@ -35,8 +38,6 @@ export async function GET() {
       proyek: rawProyek as unknown as Proyek[],
     });
   } catch (error) {
-    const { message, code } = formatDbError(error);
-    console.error('[api/data] GET failed:', { message, code });
-    return NextResponse.json({ connected: false, error: message, code }, { status: 500 });
+    return dbQueryFailedResponse(ROUTE, error);
   }
 }

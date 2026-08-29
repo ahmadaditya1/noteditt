@@ -6,7 +6,7 @@ import {
 import {
   addJadwalKuliah, deleteJadwalKuliah,
   addJadwalTambahan, deleteJadwalTambahan,
-  saveJadwalKuliah, getJadwalKuliah,
+  saveJadwalKuliah,
 } from '@/lib/storage';
 
 const HARI_ORDER = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu'] as const;
@@ -41,7 +41,7 @@ export default function JadwalSection({ jadwalKuliah, jadwalTambahan, onChange }
     await addJadwalKuliah(formK);
     setFormK(emptyKuliah);
     setShowFormK(false);
-    onChange();
+    await onChange();
   };
 
   const handleAddTambahan = async (e: React.FormEvent) => {
@@ -50,13 +50,12 @@ export default function JadwalSection({ jadwalKuliah, jadwalTambahan, onChange }
     await addJadwalTambahan(formT);
     setFormT(emptyTambahan);
     setShowFormT(false);
-    onChange();
+    await onChange();
   };
 
   const handleImport = async () => {
     const lines = importText.trim().split('\n').filter(Boolean);
     let count = 0;
-    const existing = getJadwalKuliah();
     const toAdd: JadwalKuliah[] = [];
     lines.forEach(line => {
       let cols: string[] = [];
@@ -82,10 +81,10 @@ export default function JadwalSection({ jadwalKuliah, jadwalTambahan, onChange }
       return;
     }
 
-    await saveJadwalKuliah([...existing, ...toAdd]);
+    await saveJadwalKuliah([...jadwalKuliah, ...toAdd]);
     setImportResult(`✅ ${count} jadwal berhasil diimpor.`);
     setImportText('');
-    onChange();
+    await onChange();
   };
 
   const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
@@ -179,7 +178,7 @@ export default function JadwalSection({ jadwalKuliah, jadwalTambahan, onChange }
                       <span className="jadwal-matkul" style={{ flex: 1 }}>{j.mataKuliah}</span>
                       {j.kelas && <span className="jadwal-ruang">Kelas {j.kelas}</span>}
                       {j.ruang && <span className="jadwal-ruang">· {j.ruang}</span>}
-                      <button className="btn-delete" onClick={() => { deleteJadwalKuliah(j.id); onChange(); }}>×</button>
+                      <button className="btn-delete" onClick={async () => { await deleteJadwalKuliah(j.id); await onChange(); }}>×</button>
                     </div>
                   ))}
                 </div>
@@ -243,7 +242,7 @@ export default function JadwalSection({ jadwalKuliah, jadwalTambahan, onChange }
                     <span className="jadwal-matkul">{j.judul}</span>
                     {j.catatan && <span className="jadwal-ruang"> — {j.catatan}</span>}
                   </div>
-                  <button className="btn-delete" onClick={() => { deleteJadwalTambahan(j.id); onChange(); }}>×</button>
+                  <button className="btn-delete" onClick={async () => { await deleteJadwalTambahan(j.id); await onChange(); }}>×</button>
                 </div>
               ))
           }

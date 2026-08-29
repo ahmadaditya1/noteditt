@@ -12,13 +12,13 @@ export default function ProyekSection({ proyek, onChange }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.nama.trim()) return;
-    addProyek(form);
+    await addProyek(form);
     setForm(emptyForm);
     setShowForm(false);
-    onChange();
+    await onChange();
   };
 
   return (
@@ -66,12 +66,12 @@ export default function ProyekSection({ proyek, onChange }: Props) {
               <div key={p.id} className="proyek-card">
                 <div className="proyek-card-header">
                   <span className="proyek-nama">📁 {p.nama}</span>
-                  <button className="btn-delete" onClick={() => { deleteProyek(p.id); onChange(); }}>×</button>
+                  <button className="btn-delete" onClick={async () => { await deleteProyek(p.id); await onChange(); }}>×</button>
                 </div>
                 {p.deskripsi && <p className="proyek-desc">{p.deskripsi}</p>}
                 <div className="proyek-card-footer">
                   <Badge label={p.status} colorVar={statusProyekColor[p.status]}
-                    clickable onClick={() => { cycleProyekStatus(p.id); onChange(); }} />
+                    clickable onClick={async () => { await cycleProyekStatus(p.id); await onChange(); }} />
                 </div>
               </div>
             ))}

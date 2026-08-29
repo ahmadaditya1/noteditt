@@ -15,13 +15,13 @@ export default function ContentCalendarSection({ konten, onChange }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.tanggal || !form.caption.trim()) return;
-    addKonten(form);
+    await addKonten(form);
     setForm(emptyForm);
     setShowForm(false);
-    onChange();
+    await onChange();
   };
 
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -85,8 +85,8 @@ export default function ContentCalendarSection({ konten, onChange }: Props) {
                   <span className="konten-caption">{k.caption}</span>
                   <div className="konten-actions">
                     <Badge label={k.status} colorVar={statusKontenColor[k.status]}
-                      clickable onClick={() => { cycleKontenStatus(k.id); onChange(); }} />
-                    <button className="btn-delete" onClick={() => { deleteKonten(k.id); onChange(); }}>×</button>
+                      clickable onClick={async () => { await cycleKontenStatus(k.id); await onChange(); }} />
+                    <button className="btn-delete" onClick={async () => { await deleteKonten(k.id); await onChange(); }}>×</button>
                   </div>
                 </div>
               ))}

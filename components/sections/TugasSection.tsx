@@ -23,13 +23,13 @@ export default function TugasSection({ tugas, onChange }: Props) {
     return a.deadline ? -1 : b.deadline ? 1 : 0;
   });
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.title.trim()) return;
-    addTugas(form);
+    await addTugas(form);
     setForm(emptyForm);
     setShowForm(false);
-    onChange();
+    await onChange();
   };
 
   const isOverdue = (d: string) => d && new Date(d) < new Date(new Date().toDateString());
@@ -89,7 +89,7 @@ export default function TugasSection({ tugas, onChange }: Props) {
                 <li key={t.id} className={`win-list-item ${t.done ? 'done' : ''}`}
                     style={{ userSelect: 'text' }}>
                   <input type="checkbox" className="win-checkbox" checked={t.done}
-                    onChange={() => { toggleTugas(t.id); onChange(); }} />
+                    onChange={async () => { await toggleTugas(t.id); await onChange(); }} />
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span className={`tugas-title item-text ${t.done ? '' : ''}`}>{t.title}</span>
                     <div className="tugas-meta">
@@ -102,7 +102,7 @@ export default function TugasSection({ tugas, onChange }: Props) {
                       )}
                     </div>
                   </div>
-                  <button className="btn-delete" onClick={() => { deleteTugas(t.id); onChange(); }}>×</button>
+                  <button className="btn-delete" onClick={async () => { await deleteTugas(t.id); await onChange(); }}>×</button>
                 </li>
               ))}
             </ul>
