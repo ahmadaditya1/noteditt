@@ -40,13 +40,18 @@ export function getDb(): postgres.Sql | null {
   return sql;
 }
 
+// Cache flag: hanya jalankan ensureTablesExist sekali per cold start
+let tablesReady = false;
+
 export async function ensureTablesExist(): Promise<boolean> {
+  if (tablesReady) return true; // Skip jika sudah pernah jalan
+
   const db = getDb();
   if (!db) return false;
 
   try {
-    // 1. Jadwal Kuliah
-    await db`
+    // Gabung semua CREATE TABLE dalam 1 query untuk mengurangi round-trip
+    await db.unsafe(`
       CREATE TABLE IF NOT EXISTS jadwal_kuliah (
         id VARCHAR(100) PRIMARY KEY,
         hari VARCHAR(20) NOT NULL,
@@ -56,13 +61,8 @@ export async function ensureTablesExist(): Promise<boolean> {
         ruang VARCHAR(100) DEFAULT '',
         kelas VARCHAR(100) DEFAULT ''
       );
-    `;
-    await db`
       ALTER TABLE jadwal_kuliah ADD COLUMN IF NOT EXISTS kelas VARCHAR(100) DEFAULT '';
-    `;
 
-    // 2. Jadwal Tambahan
-    await db`
       CREATE TABLE IF NOT EXISTS jadwal_tambahan (
         id VARCHAR(100) PRIMARY KEY,
         tanggal VARCHAR(30) NOT NULL,
@@ -70,10 +70,7 @@ export async function ensureTablesExist(): Promise<boolean> {
         judul VARCHAR(255) NOT NULL,
         catatan TEXT DEFAULT ''
       );
-    `;
 
-    // 3. Tugas (To-Do)
-    await db`
       CREATE TABLE IF NOT EXISTS tugas (
         id VARCHAR(100) PRIMARY KEY,
         title VARCHAR(255) NOT NULL,
@@ -81,19 +78,13 @@ export async function ensureTablesExist(): Promise<boolean> {
         deadline VARCHAR(30) DEFAULT '',
         done BOOLEAN DEFAULT FALSE
       );
-    `;
 
-    // 4. Catatan
-    await db`
       CREATE TABLE IF NOT EXISTS catatan (
         id VARCHAR(100) PRIMARY KEY,
         content TEXT NOT NULL,
         created_at VARCHAR(50) NOT NULL
       );
-    `;
 
-    // 5. Konten Calendar
-    await db`
       CREATE TABLE IF NOT EXISTS konten_calendar (
         id VARCHAR(100) PRIMARY KEY,
         tanggal VARCHAR(30) NOT NULL,
@@ -101,18 +92,16 @@ export async function ensureTablesExist(): Promise<boolean> {
         status VARCHAR(50) NOT NULL,
         caption TEXT NOT NULL
       );
-    `;
 
-    // 6. Proyek
-    await db`
       CREATE TABLE IF NOT EXISTS proyek (
         id VARCHAR(100) PRIMARY KEY,
         nama VARCHAR(255) NOT NULL,
         status VARCHAR(50) NOT NULL,
         deskripsi TEXT DEFAULT ''
       );
-    `;
+    `);
 
+    tablesReady = true;
     return true;
   } catch (error) {
     const { message, code } = formatDbError(error);
