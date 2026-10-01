@@ -10,6 +10,7 @@ interface TaskbarProps {
   onWindowClick: (id: string) => void;
   onLogout: () => void;
   onRefresh: () => void;
+  onUploadLocal?: () => void;
 }
 
 function SyncIndicator({ status }: { status: SyncStatus }) {
@@ -34,7 +35,7 @@ function SyncIndicator({ status }: { status: SyncStatus }) {
   );
 }
 
-export default function Taskbar({ windows, activeId, syncStatus, onWindowClick, onLogout, onRefresh }: TaskbarProps) {
+export default function Taskbar({ windows, activeId, syncStatus, onWindowClick, onLogout, onRefresh, onUploadLocal }: TaskbarProps) {
   const [time, setTime] = useState('');
   const [showStart, setShowStart] = useState(false);
 
@@ -94,6 +95,12 @@ export default function Taskbar({ windows, activeId, syncStatus, onWindowClick, 
               <StartMenuItem icon="🔒" label="Kunci / Keluar" onClick={() => { setShowStart(false); onLogout(); }} />
               <div style={{ height: 1, background: 'var(--win-dark)', margin: '2px 0', boxShadow: '0 1px 0 var(--win-white)' }} />
               <StartMenuItem icon="🔄" label="Refresh dari Server" onClick={() => { setShowStart(false); onRefresh(); }} />
+              {onUploadLocal && (
+                <>
+                  <div style={{ height: 1, background: 'var(--win-dark)', margin: '2px 0', boxShadow: '0 1px 0 var(--win-white)' }} />
+                  <StartMenuItem icon="☁️" label="Upload Data Lokal" onClick={() => { setShowStart(false); onUploadLocal(); }} />
+                </>
+              )}
               <div style={{ height: 1, background: 'var(--win-dark)', margin: '2px 0', boxShadow: '0 1px 0 var(--win-white)' }} />
               <StartMenuItem icon="🖥️" label="Dashboard" onClick={() => setShowStart(false)} />
             </div>

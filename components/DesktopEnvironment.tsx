@@ -11,6 +11,7 @@ import ProyekSection from './sections/ProyekSection';
 import {
   EMPTY_DATA,
   fetchAllDataFromServer,
+  pushAllLocalDataToServer,
   subscribeSyncStatus,
   type AllDashboardData,
   type SyncStatus,
@@ -114,6 +115,12 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
     setData(result.data);
     setDataLoading(false);
   }, []);
+
+  const handleUploadLocal = useCallback(async () => {
+    const res = await pushAllLocalDataToServer();
+    alert(res.message);
+    await refresh();
+  }, [refresh]);
 
   // Initial load: server first
   useEffect(() => {
@@ -239,6 +246,7 @@ export default function DesktopEnvironment({ onLogout }: DesktopEnvironmentProps
         onWindowClick={handleTaskbarClick}
         onLogout={onLogout}
         onRefresh={refresh}
+        onUploadLocal={handleUploadLocal}
       />
     </>
   );
