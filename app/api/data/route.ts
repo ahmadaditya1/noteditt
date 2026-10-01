@@ -3,6 +3,8 @@ import {
   dbSuccessResponse,
   requireDb,
 } from '@/lib/api-db';
+
+export const maxDuration = 10;
 import { JadwalKuliah, JadwalTambahan, Tugas, Catatan, KontenCalendar, Proyek } from '@/lib/types';
 
 const ROUTE = 'api/data';

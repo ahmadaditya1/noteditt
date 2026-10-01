@@ -32,7 +32,7 @@ export function getDb(): postgres.Sql | null {
       ssl: isLocal ? false : { rejectUnauthorized: false },
       max: 1,           // serverless: 1 koneksi per invocation
       idle_timeout: 20,
-      connect_timeout: 8, // 8s — Supabase pooler bisa lambat saat cold start
+      connect_timeout: 5, // 5s — lebih pendek agar Vercel punya waktu untuk query dalam batas 10s
       prepare: false,     // Wajib untuk Supabase Connection Pooler / PgBouncer
     });
   }

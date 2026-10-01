@@ -6,6 +6,8 @@ import {
   requireDb,
 } from '@/lib/api-db';
 
+export const maxDuration = 10;
+
 const ROUTE = 'api/schedule-kuliah';
 
 export async function GET() {
